@@ -1,0 +1,1090 @@
+-- Roblox MultiTab GUI Script - Enhanced Version
+-- Client-sided GUI + server effects where needed
+
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local TextChatService = game:GetService("TextChatService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+
+-- Global variables for effect control
+local rainbowChatConnection = nil
+local discoSkyConnection = nil
+
+-- Rainbow color cycling helper
+local function RainbowColor(step)
+    local frequency = 0.3
+    local r = math.floor(math.sin(frequency * step + 0) * 127 + 128)
+    local g = math.floor(math.sin(frequency * step + 2) * 127 + 128)
+    local b = math.floor(math.sin(frequency * step + 4) * 127 + 128)
+    return Color3.fromRGB(r, g, b)
+end
+
+-- Create main ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MultiTabGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Notification system
+local function showNotification(message, isError)
+    local notificationFrame = Instance.new("Frame")
+    notificationFrame.Name = "NotificationFrame"
+    notificationFrame.Size = UDim2.new(0, 400, 0, 50)
+    notificationFrame.Position = UDim2.new(0.5, -200, 0, -60)
+    notificationFrame.BackgroundColor3 = isError and Color3.fromRGB(220, 30, 30) or Color3.fromRGB(30, 220, 30)
+    notificationFrame.BorderSizePixel = 0
+    notificationFrame.Parent = screenGui
+    notificationFrame.AnchorPoint = Vector2.new(0.5, 0)
+    notificationFrame.ZIndex = 1000
+
+    local notificationCorner = Instance.new("UICorner")
+    notificationCorner.CornerRadius = UDim.new(0, 12)
+    notificationCorner.Parent = notificationFrame
+
+    local notificationText = Instance.new("TextLabel")
+    notificationText.Size = UDim2.new(1, -20, 1, 0)
+    notificationText.Position = UDim2.new(0, 10, 0, 0)
+    notificationText.BackgroundTransparency = 1
+    notificationText.Text = message
+    notificationText.TextColor3 = Color3.new(1, 1, 1)
+    notificationText.Font = Enum.Font.GothamBold
+    notificationText.TextSize = 18
+    notificationText.TextScaled = true
+    notificationText.Parent = notificationFrame
+
+    -- Slide in animation
+    local slideInTween = TweenService:Create(
+        notificationFrame,
+        TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        {Position = UDim2.new(0.5, -200, 0, 20)}
+    )
+    slideInTween:Play()
+
+    -- Wait and fade out
+    wait(3)
+    local fadeOutTween = TweenService:Create(
+        notificationFrame,
+        TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {
+            Position = UDim2.new(0.5, -200, 0, -60),
+            BackgroundTransparency = 1
+        }
+    )
+    local textFadeTween = TweenService:Create(
+        notificationText,
+        TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {TextTransparency = 1}
+    )
+    
+    fadeOutTween:Play()
+    textFadeTween:Play()
+    
+    fadeOutTween.Completed:Connect(function()
+        notificationFrame:Destroy()
+    end)
+end
+
+-- Auto-resize text elements
+local function autoResizeTextElement(element, minWidth, maxWidth)
+    minWidth = minWidth or 160
+    maxWidth = maxWidth or 300
+    
+    local textBounds = element.TextBounds
+    local newWidth = math.max(minWidth, math.min(maxWidth, textBounds.X + 20))
+    element.Size = UDim2.new(0, newWidth, element.Size.Y.Scale, element.Size.Y.Offset)
+end
+
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 1000, 0, 420)
+mainFrame.Position = UDim2.new(0.5, -500, 0.5, -210)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.Active = true
+mainFrame.Draggable = true
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 15)
+mainCorner.Parent = mainFrame
+
+-- Top bar (title + controls)
+local topBar = Instance.new("Frame")
+topBar.Name = "TopBar"
+topBar.Size = UDim2.new(1, 0, 0, 40)
+topBar.BackgroundColor3 = Color3.fromRGB(15, 15, 35)
+topBar.Parent = mainFrame
+
+local topBarCorner = Instance.new("UICorner")
+topBarCorner.CornerRadius = UDim.new(0, 15)
+topBarCorner.Parent = topBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(0, 200, 1, 0)
+titleLabel.Position = UDim2.new(0, 10, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "USER'S SS"
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 22
+titleLabel.TextColor3 = Color3.new(1, 1, 1)
+titleLabel.Parent = topBar
+
+-- Minimize button
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Name = "MinimizeBtn"
+minimizeBtn.Size = UDim2.new(0, 40, 1, 0)
+minimizeBtn.Position = UDim2.new(1, -80, 0, 0)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
+minimizeBtn.Text = "-"
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 28
+minimizeBtn.TextColor3 = Color3.new(1, 1, 1)
+minimizeBtn.Parent = topBar
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 8)
+minCorner.Parent = minimizeBtn
+
+-- Close button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "CloseBtn"
+closeBtn.Size = UDim2.new(0, 40, 1, 0)
+closeBtn.Position = UDim2.new(1, -40, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(220, 30, 30)
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 24
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
+closeBtn.Parent = topBar
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 8)
+closeCorner.Parent = closeBtn
+
+-- Tab buttons container (now scrollable)
+local tabButtonsFrame = Instance.new("ScrollingFrame")
+tabButtonsFrame.Name = "TabButtons"
+tabButtonsFrame.Size = UDim2.new(1, 0, 0, 40)
+tabButtonsFrame.Position = UDim2.new(0, 0, 0, 40)
+tabButtonsFrame.BackgroundTransparency = 1
+tabButtonsFrame.BorderSizePixel = 0
+tabButtonsFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+tabButtonsFrame.AutomaticCanvasSize = Enum.AutomaticSize.X
+tabButtonsFrame.ScrollBarThickness = 0
+tabButtonsFrame.ScrollingDirection = Enum.ScrollingDirection.X
+tabButtonsFrame.Parent = mainFrame
+
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Padding = UDim.new(0, 5)
+tabLayout.Parent = tabButtonsFrame
+
+-- Content frame for tabs
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, 0, 1, -80)
+contentFrame.Position = UDim2.new(0, 0, 0, 80)
+contentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
+contentFrame.BorderSizePixel = 0
+contentFrame.CanvasSize = UDim2.new(0, 0, 5, 0)
+contentFrame.ScrollBarThickness = 8
+contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+contentFrame.Parent = mainFrame
+
+local contentCorner = Instance.new("UICorner")
+contentCorner.CornerRadius = UDim.new(0, 12)
+contentCorner.Parent = contentFrame
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Padding = UDim.new(0, 8)
+contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+contentLayout.Parent = contentFrame
+
+-- Helper function to create buttons with auto-resize
+local function createButton(text, parent, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 160, 0, 35)
+    btn.BackgroundColor3 = Color3.fromRGB(60, 40, 120)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 18
+    btn.Text = text
+    btn.AutoButtonColor = true
+    btn.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = btn
+
+    -- Auto-resize button based on text
+    autoResizeTextElement(btn, 160, 300)
+
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+-- Helper function to create textboxes with rounded edges
+local function createTextBox(placeholder, parent, size)
+    size = size or UDim2.new(0, 200, 0, 30)
+    local textbox = Instance.new("TextBox")
+    textbox.Size = size
+    textbox.PlaceholderText = placeholder
+    textbox.Text = ""
+    textbox.ClearTextOnFocus = false
+    textbox.TextColor3 = Color3.new(1, 1, 1)
+    textbox.BackgroundColor3 = Color3.fromRGB(40, 40, 70)
+    textbox.Font = Enum.Font.Gotham
+    textbox.TextSize = 18
+    textbox.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = textbox
+
+    -- Auto-resize textbox based on text
+    textbox:GetPropertyChangedSignal("Text"):Connect(function()
+        if textbox.Text ~= "" then
+            autoResizeTextElement(textbox, 200, 400)
+        end
+    end)
+
+    return textbox
+end
+
+-- Helper function to create rainbow glowing headers
+local function createRainbowHeader(text, parent)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 30)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamBlack
+    label.TextSize = 24
+    label.Text = text
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextStrokeTransparency = 0.6
+    label.Parent = parent
+
+    local step = 0
+    RunService.RenderStepped:Connect(function()
+        step = step + 0.02
+        label.TextColor3 = RainbowColor(step)
+    end)
+    return label
+end
+
+-- Tabs container
+local tabs = {}
+
+-- Function to clear content frame children (except layout/corners)
+local function clearContent()
+    for _, child in pairs(contentFrame:GetChildren()) do
+        if not (child:IsA("UIListLayout") or child:IsA("UICorner")) then
+            child:Destroy()
+        end
+    end
+end
+
+-- Switch tab function
+local currentTab = nil
+local function switchTab(name)
+    if currentTab == name then return end
+    if not tabs[name] then return end
+    clearContent()
+    tabs[name].setup(contentFrame)
+    currentTab = name
+end
+
+-- Create tab buttons with auto-resize
+local function createTabBtn(name)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 100, 1, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(50, 30, 110)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 18
+    btn.Text = name
+    btn.AutoButtonColor = true
+    btn.Parent = tabButtonsFrame
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = btn
+
+    -- Auto-resize tab button
+    autoResizeTextElement(btn, 100, 150)
+
+    btn.MouseButton1Click:Connect(function()
+        switchTab(name)
+    end)
+    return btn
+end
+
+-- Players Tab
+tabs["Players"] = {
+    setup = function(frame)
+        -- Speed header
+        createRainbowHeader("Speed", frame)
+        createButton("Fast All (WalkSpeed 50)", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.WalkSpeed = 50
+                end
+            end
+            showNotification("Applied fast speed to all players", false)
+        end)
+        createButton("Normal (WalkSpeed 16)", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.WalkSpeed = 16
+                end
+            end
+            showNotification("Reset speed for all players", false)
+        end)
+        createButton("Slow (WalkSpeed 5)", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.WalkSpeed = 5
+                end
+            end
+            showNotification("Applied slow speed to all players", false)
+        end)
+
+        -- Jump Power header
+        createRainbowHeader("Jump Power", frame)
+        createButton("High Jump All (JumpPower 100)", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.JumpPower = 100
+                end
+            end
+            showNotification("Applied high jump to all players", false)
+        end)
+        createButton("Normal Jump All (JumpPower 50)", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.JumpPower = 50
+                end
+            end
+            showNotification("Reset jump power for all players", false)
+        end)
+        createButton("No Jump All (JumpPower 0)", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.JumpPower = 0
+                end
+            end
+            showNotification("Disabled jump for all players", false)
+        end)
+
+        -- Camera Mode header
+        createRainbowHeader("Camera Mode", frame)
+        createButton("First Person Others", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    plr.CameraMode = Enum.CameraMode.LockFirstPerson
+                end
+            end
+            showNotification("Locked others to first person", false)
+        end)
+        createButton("Normal Camera Others", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    plr.CameraMode = Enum.CameraMode.Classic
+                end
+            end
+            showNotification("Reset camera for others", false)
+        end)
+    end
+}
+
+-- Chat Tab
+tabs["Chat"] = {
+    setup = function(frame)
+        createRainbowHeader("Chat Effects", frame)
+
+        local bgColorBox = createTextBox("RGB code for chat background", frame)
+        local textColorBox = createTextBox("RGB code for text color", frame)
+
+        local startRainbowBtn = createButton("Start Rainbow Chat", frame, function()
+            -- Stop any existing rainbow chat effect
+            if rainbowChatConnection then
+                rainbowChatConnection:Disconnect()
+            end
+            
+            local step = 0
+            rainbowChatConnection = RunService.RenderStepped:Connect(function()
+                step = step + 0.02
+                local r = math.floor(math.sin(step) * 127 + 128)
+                local g = math.floor(math.sin(step + 2) * 127 + 128)
+                local b = math.floor(math.sin(step + 4) * 127 + 128)
+                local chatConfig = TextChatService.ChatWindowConfiguration
+                chatConfig.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                chatConfig.TextColor3 = Color3.fromRGB(r, g, b)
+                chatConfig.BackgroundTransparency = 0
+            end)
+            showNotification("Rainbow chat enabled", false)
+        end)
+
+        local normalChatBtn = createButton("Normal Chat", frame, function()
+            -- Stop rainbow chat effect
+            if rainbowChatConnection then
+                rainbowChatConnection:Disconnect()
+                rainbowChatConnection = nil
+            end
+            
+            local chatConfig = TextChatService.ChatWindowConfiguration
+            chatConfig.BackgroundColor3 = Color3.fromRGB(25, 27, 29)
+            chatConfig.TextColor3 = Color3.fromRGB(255, 255, 255)
+            chatConfig.BackgroundTransparency = 0.3
+            showNotification("Chat reset to normal", false)
+        end)
+
+        local setColorsBtn = createButton("Set Colors", frame, function()
+            local bgColorText = bgColorBox.Text
+            local textColorText = textColorBox.Text
+            local bgR, bgG, bgB = bgColorText:match("(%d+),%s*(%d+),%s*(%d+)")
+            local textR, textG, textB = textColorText:match("(%d+),%s*(%d+),%s*(%d+)")
+            if bgR and bgG and bgB and textR and textG and textB then
+                bgR, bgG, bgB, textR, textG, textB = tonumber(bgR), tonumber(bgG), tonumber(bgB), tonumber(textR), tonumber(textG), tonumber(textB)
+                if bgR and bgG and bgB and textR and textG and textB and bgR <= 255 and bgG <= 255 and bgB <= 255 and textR <= 255 and textG <= 255 and textB <= 255 then
+                    local chatConfig = TextChatService.ChatWindowConfiguration
+                    chatConfig.BackgroundColor3 = Color3.fromRGB(bgR, bgG, bgB)
+                    chatConfig.TextColor3 = Color3.fromRGB(textR, textG, textB)
+                    chatConfig.BackgroundTransparency = 0
+                    showNotification("Chat colors applied", false)
+                else
+                    showNotification("Invalid RGB values (must be 0-255)", true)
+                end
+            else
+                showNotification("Invalid RGB format (use: R,G,B)", true)
+            end
+        end)
+    end
+}
+
+-- Skybox Tab
+tabs["Skybox"] = {
+    setup = function(frame)
+        createRainbowHeader("Skybox Controls", frame)
+
+        local colorBox = createTextBox("RGB code (e.g. 255,255,255)", frame)
+
+        local applyColorBtn = createButton("Apply Color", frame, function()
+            local text = colorBox.Text
+            local r, g, b = text:match("(%d+),%s*(%d+),%s*(%d+)")
+            if r and g and b then
+                r, g, b = tonumber(r), tonumber(g), tonumber(b)
+                if r and g and b and r <= 255 and g <= 255 and b <= 255 then
+                    Lighting:SetMinutesAfterMidnight(720)
+                    local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky", Lighting)
+                    sky.SkyboxBk = ""
+                    sky.SkyboxDn = ""
+                    sky.SkyboxFt = ""
+                    sky.SkyboxLf = ""
+                    sky.SkyboxRt = ""
+                    sky.SkyboxUp = ""
+                    local cc = Lighting:FindFirstChild("ColorCorrection") or Instance.new("ColorCorrectionEffect", Lighting)
+                    cc.TintColor = Color3.fromRGB(r, g, b)
+                    showNotification("Skybox color applied", false)
+                else
+                    showNotification("Invalid RGB values (must be 0-255)", true)
+                end
+            else
+                showNotification("Invalid RGB format (use: R,G,B)", true)
+            end
+        end)
+
+        local revertBtn = createButton("Revert Sky", frame, function()
+            -- Stop disco sky effect
+            if discoSkyConnection then
+                discoSkyConnection:Disconnect()
+                discoSkyConnection = nil
+            end
+            
+            local cc = Lighting:FindFirstChild("ColorCorrection")
+            if cc then cc:Destroy() end
+            local sky = Lighting:FindFirstChildOfClass("Sky")
+            if sky then sky:Destroy() end
+            Lighting:SetMinutesAfterMidnight(720)
+            showNotification("Sky reverted to default", false)
+        end)
+
+        local discoBtn = createButton("Disco Sky", frame, function()
+            -- Stop any existing disco sky effect
+            if discoSkyConnection then
+                discoSkyConnection:Disconnect()
+            end
+            
+            -- Create or get ColorCorrection effect
+            local cc = Lighting:FindFirstChild("ColorCorrection") or Instance.new("ColorCorrectionEffect", Lighting)
+            cc.Name = "ColorCorrection"
+            
+            -- Clear skybox textures
+            local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky", Lighting)
+            sky.SkyboxBk = ""
+            sky.SkyboxDn = ""
+            sky.SkyboxFt = ""
+            sky.SkyboxLf = ""
+            sky.SkyboxRt = ""
+            sky.SkyboxUp = ""
+            
+            local step = 0
+            discoSkyConnection = RunService.RenderStepped:Connect(function()
+                step = step + 0.02
+                local r = math.floor(math.sin(step) * 127 + 128)
+                local g = math.floor(math.sin(step + 2) * 127 + 128)
+                local b = math.floor(math.sin(step + 4) * 127 + 128)
+                cc.TintColor = Color3.fromRGB(r, g, b)
+            end)
+            showNotification("Disco sky activated", false)
+        end)
+    end
+}
+
+-- Music Tab with enhanced controls
+tabs["Music"] = {
+    setup = function(frame)
+        createRainbowHeader("Music Controls", frame)
+
+        local musicIdBox = createTextBox("Enter Music ID", frame)
+        
+        -- Volume controls
+        local volumeLabel = Instance.new("TextLabel")
+        volumeLabel.Size = UDim2.new(1, 0, 0, 25)
+        volumeLabel.BackgroundTransparency = 1
+        volumeLabel.Text = "Playback Volume"
+        volumeLabel.TextColor3 = Color3.new(1, 1, 1)
+        volumeLabel.Font = Enum.Font.GothamBold
+        volumeLabel.TextSize = 18
+        volumeLabel.Parent = frame
+
+        local volumeBox = createTextBox("Enter volume (0-1)", frame)
+
+        -- Speed controls
+        local speedLabel = Instance.new("TextLabel")
+        speedLabel.Size = UDim2.new(1, 0, 0, 25)
+        speedLabel.BackgroundTransparency = 1
+        speedLabel.Text = "Playback Speed"
+        speedLabel.TextColor3 = Color3.new(1, 1, 1)
+        speedLabel.Font = Enum.Font.GothamBold
+        speedLabel.TextSize = 18
+        speedLabel.Parent = frame
+
+        local speedBox = createTextBox("Enter playback speed", frame)
+
+        local soundObject = workspace:FindFirstChild("MusicPlayer") or Instance.new("Sound", workspace)
+        soundObject.Name = "MusicPlayer"
+        soundObject.Volume = 0.5
+        soundObject.Looped = true
+
+        createButton("Start Music", frame, function()
+            local id = tonumber(musicIdBox.Text)
+            if id then
+                soundObject.SoundId = "rbxassetid://" .. id
+                soundObject:Play()
+                showNotification("Music started", false)
+            else
+                showNotification("Invalid Music ID", true)
+            end
+        end)
+
+        createButton("Stop Music", frame, function()
+            soundObject:Stop()
+            showNotification("Music stopped", false)
+        end)
+
+        createButton("Set Volume", frame, function()
+            local volume = tonumber(volumeBox.Text)
+            if volume and volume >= 0 and volume <= 1 then
+                soundObject.PlaybackLoudness = volume
+                showNotification("Volume set to " .. volume, false)
+            else
+                showNotification("Invalid volume (must be 0-1)", true)
+            end
+        end)
+
+        createButton("Set Speed", frame, function()
+            local speed = tonumber(speedBox.Text)
+            if speed and speed > 0 then
+                soundObject.PlaybackSpeed = speed
+                showNotification("Playback speed set to " .. speed .. "x", false)
+            else
+                showNotification("Invalid speed (must be > 0)", true)
+            end
+        end)
+    end
+}
+
+-- Settings Tab
+tabs["Settings"] = {
+    setup = function(frame)
+        createRainbowHeader("Settings", frame)
+
+        -- Transparency textbox
+        local transLabel = Instance.new("TextLabel")
+        transLabel.Size = UDim2.new(1, 0, 0, 25)
+        transLabel.BackgroundTransparency = 1
+        transLabel.Text = "GUI Transparency: 0"
+        transLabel.TextColor3 = Color3.new(1, 1, 1)
+        transLabel.Font = Enum.Font.GothamBold
+        transLabel.TextSize = 18
+        transLabel.Parent = frame
+
+        local transBox = createTextBox("Enter transparency (0-1)", frame)
+
+        local applyTransBtn = createButton("Apply Transparency", frame, function()
+            local transparency = tonumber(transBox.Text)
+            if transparency and transparency >= 0 and transparency <= 1 then
+                mainFrame.BackgroundTransparency = transparency
+                topBar.BackgroundTransparency = transparency
+                tabButtonsFrame.BackgroundTransparency = transparency
+                contentFrame.BackgroundTransparency = transparency
+                transLabel.Text = ("GUI Transparency: %.2f"):format(transparency)
+                showNotification("Transparency applied", false)
+            else
+                showNotification("Invalid transparency (must be 0-1)", true)
+            end
+        end)
+
+        -- Color Picker - basic RGB input for background color
+        local colorInput = createTextBox("Background Color RGB (e.g. 25,25,50)", frame)
+
+        local applyColorBtn = createButton("Apply Background Color", frame, function()
+            local text = colorInput.Text
+            local r, g, b = text:match("(%d+),%s*(%d+),%s*(%d+)")
+            if r and g and b then
+                r, g, b = tonumber(r), tonumber(g), tonumber(b)
+                if r and g and b and r <= 255 and g <= 255 and b <= 255 then
+                    mainFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                    topBar.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                    tabButtonsFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                    contentFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                    showNotification("Background color applied", false)
+                else
+                    showNotification("Invalid RGB values (must be 0-255)", true)
+                end
+            else
+                showNotification("Invalid RGB format (use: R,G,B)", true)
+            end
+        end)
+    end
+}
+
+-- Spam Tab
+tabs["Spam"] = {
+    setup = function(frame)
+        createRainbowHeader("Spam Controls", frame)
+
+        local spamConnection = nil
+
+        local startSpamBtn = createButton("Start Part Spam", frame, function()
+            -- Stop any existing spam
+            if spamConnection then
+                spamConnection:Disconnect()
+            end
+            
+            spamConnection = RunService.Heartbeat:Connect(function()
+                -- Calculate average player position
+                local totalPosition = Vector3.new(0, 0, 0)
+                local playerCount = 0
+                
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        totalPosition = totalPosition + player.Character.HumanoidRootPart.Position
+                        playerCount = playerCount + 1
+                    end
+                end
+                
+                local averagePosition = Vector3.new(0, 150, 0) -- Default if no players (150 studs up)
+                if playerCount > 0 then
+                    averagePosition = totalPosition / playerCount
+                    averagePosition = Vector3.new(averagePosition.X, averagePosition.Y + 100, averagePosition.Z) -- 100 studs above players
+                end
+                
+                -- Spawn 40 parts around average position
+                local newParts = {}
+                for i = 1, 40 do
+                    local part = Instance.new("Part")
+                    part.Name = "SpamPart"
+                    part.Size = Vector3.new(5, 5, 5) -- 5x5x5 stud cubes
+                    part.Material = Enum.Material.Neon
+                    part.Color = Color3.new(1, 1, 1) -- Bright white
+                    part.CanCollide = false -- Collide off
+                    part.Anchored = true
+                    
+                    -- Random position within 300 stud radius
+                    local angle = math.random() * math.pi * 2
+                    local distance = math.random(10, 300)
+                    local x = averagePosition.X + math.cos(angle) * distance
+                    local z = averagePosition.Z + math.sin(angle) * distance
+                    local y = averagePosition.Y + math.random(-20, 20) -- Small vertical variation from the 100 stud height
+                    
+                    part.Position = Vector3.new(x, y, z)
+                    part.Parent = Workspace
+                    table.insert(newParts, part)
+                end
+            end)
+            showNotification("Part spam started", false)
+        end)
+
+        local stopSpamBtn = createButton("End Part Spam", frame, function()
+            -- Stop spawning
+            if spamConnection then
+                spamConnection:Disconnect()
+                spamConnection = nil
+            end
+            
+            -- Clean up all spam parts
+            for _, child in pairs(Workspace:GetChildren()) do
+                if child:IsA("Part") and child.Name == "SpamPart" then
+                    child:Destroy()
+                end
+            end
+            showNotification("Part spam stopped", false)
+        end)
+    end
+}
+
+-- Workspace Tab
+tabs["Workspace"] = {
+    setup = function(frame)
+        createRainbowHeader("Workspace Controls", frame)
+
+        createButton("Delete Terrain", frame, function()
+            local terrain = Workspace:FindFirstChild("Terrain")
+            if terrain then
+                terrain:ReadVoxels(Region3.new(Vector3.new(-2048, -2048, -2048), Vector3.new(2048, 2048, 2048)), 4)
+                terrain:FillRegion(Region3.new(Vector3.new(-2048, -2048, -2048), Vector3.new(2048, 2048, 2048)), 4, Enum.Material.Air)
+                showNotification("Terrain deleted", false)
+            end
+        end)
+
+        createButton("Delete Workspace", frame, function()
+            local deletedCount = 0
+            for _, child in pairs(Workspace:GetChildren()) do
+                if child ~= Workspace.Terrain and child ~= Workspace.Camera and not Players:GetPlayerFromCharacter(child) then
+                    if child:IsA("BasePart") or child:IsA("Model") or child:IsA("Part") or child:IsA("Folder") then
+                        child:Destroy()
+                        deletedCount = deletedCount + 1
+                    end
+                end
+            end
+            showNotification("Workspace cleaned (" .. deletedCount .. " objects)", false)
+        end)
+    end
+}
+
+-- Gears Tab
+tabs["Gears"] = {
+    setup = function(frame)
+        createRainbowHeader("Gear Controls", frame)
+
+        -- Username input
+        local usernameLabel = Instance.new("TextLabel")
+        usernameLabel.Size = UDim2.new(1, 0, 0, 25)
+        usernameLabel.BackgroundTransparency = 1
+        usernameLabel.Text = "Input Username"
+        usernameLabel.TextColor3 = Color3.new(1, 1, 1)
+        usernameLabel.Font = Enum.Font.GothamBold
+        usernameLabel.TextSize = 18
+        usernameLabel.Parent = frame
+
+        local usernameBox = createTextBox("Enter username", frame)
+
+        -- Gear ID input
+        local gearIdLabel = Instance.new("TextLabel")
+        gearIdLabel.Size = UDim2.new(1, 0, 0, 25)
+        gearIdLabel.BackgroundTransparency = 1
+        gearIdLabel.Text = "Input Gear ID"
+        gearIdLabel.TextColor3 = Color3.new(1, 1, 1)
+        gearIdLabel.Font = Enum.Font.GothamBold
+        gearIdLabel.TextSize = 18
+        gearIdLabel.Parent = frame
+
+        local gearIdBox = createTextBox("Enter gear ID", frame)
+
+        -- Give gear button
+        createButton("Give Gear", frame, function()
+            local username = usernameBox.Text
+            local gearId = tonumber(gearIdBox.Text)
+            
+            if username == "" or not gearId then
+                showNotification("Please enter both username and gear ID", true)
+                return
+            end
+            
+            -- Find player by username
+            local targetPlayer = nil
+            for _, player in pairs(Players:GetPlayers()) do
+                if string.lower(player.Name) == string.lower(username) or string.lower(player.DisplayName) == string.lower(username) then
+                    targetPlayer = player
+                    break
+                end
+            end
+            
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            if not targetPlayer.Character then
+                showNotification("Player has no character", true)
+                return
+            end
+            
+            -- Create gear and give to player
+            local success, errorMsg = pcall(function()
+                local gear = game:GetService("InsertService"):LoadAsset(gearId)
+                if gear and gear:GetChildren()[1] then
+                    local tool = gear:GetChildren()[1]
+                    if tool:IsA("Tool") then
+                        tool.Parent = targetPlayer.Backpack
+                        showNotification("Gave gear to " .. targetPlayer.Name, false)
+                    else
+                        showNotification("Asset is not a tool/gear", true)
+                    end
+                else
+                    showNotification("Failed to load gear with ID: " .. gearId, true)
+                end
+            end)
+            
+            if not success then
+                showNotification("Error giving gear: " .. tostring(errorMsg), true)
+            end
+        end)
+    end
+}
+
+-- User Location Tab
+tabs["User Location"] = {
+    setup = function(frame)
+        createRainbowHeader("Teleport Controls", frame)
+
+        -- Bring All button
+        createButton("Bring All", frame, function()
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("You need a character to bring others", true)
+                return
+            end
+            
+            local myPosition = LocalPlayer.Character.HumanoidRootPart.Position
+            local broughtCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    -- Teleport to slightly different positions to avoid overlapping
+                    local offset = Vector3.new(math.random(-10, 10), 0, math.random(-10, 10))
+                    plr.Character.HumanoidRootPart.CFrame = CFrame.new(myPosition + offset)
+                    broughtCount = broughtCount + 1
+                end
+            end
+            showNotification("Brought " .. broughtCount .. " players", false)
+        end)
+
+        -- Goto Username section
+        local gotoLabel = Instance.new("TextLabel")
+        gotoLabel.Size = UDim2.new(1, 0, 0, 25)
+        gotoLabel.BackgroundTransparency = 1
+        gotoLabel.Text = "Goto Username"
+        gotoLabel.TextColor3 = Color3.new(1, 1, 1)
+        gotoLabel.Font = Enum.Font.GothamBold
+        gotoLabel.TextSize = 18
+        gotoLabel.Parent = frame
+
+        local gotoBox = createTextBox("Enter username to go to", frame)
+
+        createButton("Go To Player", frame, function()
+            local username = gotoBox.Text
+            if username == "" then
+                showNotification("Please enter a username", true)
+                return
+            end
+            
+            -- Find target player
+            local targetPlayer = nil
+            for _, player in pairs(Players:GetPlayers()) do
+                if string.lower(player.Name) == string.lower(username) or string.lower(player.DisplayName) == string.lower(username) then
+                    targetPlayer = player
+                    break
+                end
+            end
+            
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("Target player has no character", true)
+                return
+            end
+            
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("You need a character to teleport", true)
+                return
+            end
+            
+            -- Teleport to target player
+            LocalPlayer.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(5, 0, 0)
+            showNotification("Teleported to " .. targetPlayer.Name, false)
+        end)
+
+        -- Bring Username section
+        local bringLabel = Instance.new("TextLabel")
+        bringLabel.Size = UDim2.new(1, 0, 0, 25)
+        bringLabel.BackgroundTransparency = 1
+        bringLabel.Text = "Bring Username"
+        bringLabel.TextColor3 = Color3.new(1, 1, 1)
+        bringLabel.Font = Enum.Font.GothamBold
+        bringLabel.TextSize = 18
+        bringLabel.Parent = frame
+
+        local bringBox = createTextBox("Enter username to bring", frame)
+
+        createButton("Bring Player", frame, function()
+            local username = bringBox.Text
+            if username == "" then
+                showNotification("Please enter a username", true)
+                return
+            end
+            
+            -- Find target player
+            local targetPlayer = nil
+            for _, player in pairs(Players:GetPlayers()) do
+                if string.lower(player.Name) == string.lower(username) or string.lower(player.DisplayName) == string.lower(username) then
+                    targetPlayer = player
+                    break
+                end
+            end
+            
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("Target player has no character", true)
+                return
+            end
+            
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("You need a character to bring others", true)
+                return
+            end
+            
+            -- Bring target player to you
+            targetPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(5, 0, 0)
+            showNotification("Brought " .. targetPlayer.Name .. " to you", false)
+        end)
+    end
+}
+
+-- Trolling Tab
+tabs["Trolling"] = {
+    setup = function(frame)
+        createRainbowHeader("Trolling", frame)
+
+        createButton("Freeze Others", frame, function()
+            local frozenCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    plr.Character.HumanoidRootPart.Anchored = true
+                    frozenCount = frozenCount + 1
+                end
+            end
+            showNotification("Froze " .. frozenCount .. " players", false)
+        end)
+
+        createButton("Unfreeze Others", frame, function()
+            local unfrozenCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    plr.Character.HumanoidRootPart.Anchored = false
+                    unfrozenCount = unfrozenCount + 1
+                end
+            end
+            showNotification("Unfroze " .. unfrozenCount .. " players", false)
+        end)
+
+        createButton("Explode Others", frame, function()
+            local explodedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    local explosion = Instance.new("Explosion")
+                    explosion.Position = plr.Character.HumanoidRootPart.Position
+                    explosion.BlastPressure = 100
+                    explosion.BlastRadius = 3
+                    explosion.Parent = Workspace
+                    explodedCount = explodedCount + 1
+                end
+            end
+            showNotification("Exploded " .. explodedCount .. " players", false)
+        end)
+
+        createButton("Kick Others", frame, function()
+            local kickedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    plr:Kick("You have been kicked by an admin.")
+                    kickedCount = kickedCount + 1
+                end
+            end
+            showNotification("Kicked " .. kickedCount .. " players", false)
+        end)
+    end
+}
+
+-- Create tab buttons for all tabs
+createTabBtn("Players")
+createTabBtn("Chat")
+createTabBtn("Skybox")
+createTabBtn("Music")
+createTabBtn("Settings")
+createTabBtn("Spam")
+createTabBtn("Workspace")
+createTabBtn("Gears")
+createTabBtn("User Location")
+createTabBtn("Trolling")
+
+-- Variables for minimize functionality
+local isMinimized = false
+local originalSize = mainFrame.Size
+local minimizedSize = UDim2.new(0, 1000, 0, 40)
+
+-- Minimize button functionality
+minimizeBtn.MouseButton1Click:Connect(function()
+    if not isMinimized then
+        -- Minimize: hide tabs and content, keep only top bar
+        tabButtonsFrame.Visible = false
+        contentFrame.Visible = false
+        mainFrame.Size = minimizedSize
+        minimizeBtn.Text = "+"
+        isMinimized = true
+        showNotification("GUI minimized", false)
+    else
+        -- Restore: show tabs and content
+        tabButtonsFrame.Visible = true
+        contentFrame.Visible = true
+        mainFrame.Size = originalSize
+        minimizeBtn.Text = "-"
+        isMinimized = false
+        showNotification("GUI restored", false)
+    end
+end)
+
+-- Close button functionality
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- Initial tab selection
+switchTab("Players")
+
+-- Ensure only the local player sees the GUI
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
