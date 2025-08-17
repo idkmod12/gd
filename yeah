@@ -1,4 +1,2010 @@
-hey so i sent you this script
+Hey Claude so i sent you this script
+
+-- Roblox MultiTab GUI Script - Enhanced Version with Additional Features - PART 1
+-- Client-sided GUI + server effects where needed
+
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local TextChatService = game:GetService("TextChatService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+
+-- Global variables for effect control
+local rainbowChatConnection = nil
+local discoSkyConnection = nil
+local bannedPlayers = {} -- Store banned players data
+
+-- Rainbow color cycling helper
+local function RainbowColor(step)
+    local frequency = 0.3
+    local r = math.floor(math.sin(frequency * step + 0) * 127 + 128)
+    local g = math.floor(math.sin(frequency * step + 2) * 127 + 128)
+    local b = math.floor(math.sin(frequency * step + 4) * 127 + 128)
+    return Color3.fromRGB(r, g, b)
+end
+
+-- Helper function to find player by username
+local function findPlayerByName(name)
+    for _, player in pairs(Players:GetPlayers()) do
+        if string.lower(player.Name) == string.lower(name) or string.lower(player.DisplayName) == string.lower(name) then
+            return player
+        end
+    end
+    return nil
+end
+
+-- Create main ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MultiTabGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Notification system
+local function showNotification(message, isError)
+    local notificationFrame = Instance.new("Frame")
+    notificationFrame.Name = "NotificationFrame"
+    notificationFrame.Size = UDim2.new(0, 400, 0, 50)
+    notificationFrame.Position = UDim2.new(0.5, -200, 0, -60)
+    notificationFrame.BackgroundColor3 = Color3.fromRGB(220, 30, 30)
+    notificationFrame.BorderSizePixel = 0
+    notificationFrame.Parent = screenGui
+    notificationFrame.AnchorPoint = Vector2.new(0.5, 0)
+    notificationFrame.ZIndex = 1000
+    notificationFrame.BackgroundTransparency = 0.5
+
+    local notificationCorner = Instance.new("UICorner")
+    notificationCorner.CornerRadius = UDim.new(0, 12)
+    notificationCorner.Parent = notificationFrame
+
+    local notificationText = Instance.new("TextLabel")
+    notificationText.Size = UDim2.new(1, -20, 1, 0)
+    notificationText.Position = UDim2.new(0, 10, 0, 0)
+    notificationText.BackgroundTransparency = 1
+    notificationText.Text = message
+    notificationText.TextColor3 = Color3.new(1, 1, 1)
+    notificationText.Font = Enum.Font.GothamBold
+    notificationText.TextSize = 18
+    notificationText.TextScaled = true
+    notificationText.TextTransparency = 0
+    notificationText.Parent = notificationFrame
+
+    -- Only show if it's an error
+    if not isError then
+        notificationFrame:Destroy()
+        return
+    end
+
+    -- Slide in animation
+    local slideInTween = TweenService:Create(
+        notificationFrame,
+        TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        {Position = UDim2.new(0.5, -200, 0, 20)}
+    )
+    slideInTween:Play()
+
+    -- Wait and fade out
+    wait(3)
+    local fadeOutTween = TweenService:Create(
+        notificationFrame,
+        TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {
+            Position = UDim2.new(0.5, -200, 0, -60),
+            BackgroundTransparency = 1
+        }
+    )
+    local textFadeTween = TweenService:Create(
+        notificationText,
+        TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {TextTransparency = 1}
+    )
+    
+    fadeOutTween:Play()
+    textFadeTween:Play()
+    
+    fadeOutTween.Completed:Connect(function()
+        notificationFrame:Destroy()
+    end)
+end
+
+-- Auto-resize text elements
+local function autoResizeTextElement(element, minWidth, maxWidth)
+    minWidth = minWidth or 160
+    maxWidth = maxWidth or 300
+    
+    local textBounds = element.TextBounds
+    local newWidth = math.max(minWidth, math.min(maxWidth, textBounds.X + 20))
+    element.Size = UDim2.new(0, newWidth, element.Size.Y.Scale, element.Size.Y.Offset)
+end
+
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 1000, 0, 420)
+mainFrame.Position = UDim2.new(0.5, -500, 0.5, -210)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.Active = true
+mainFrame.Draggable = true
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 15)
+mainCorner.Parent = mainFrame
+
+-- Top bar (title + controls)
+local topBar = Instance.new("Frame")
+topBar.Name = "TopBar"
+topBar.Size = UDim2.new(1, 0, 0, 40)
+topBar.BackgroundColor3 = Color3.fromRGB(15, 15, 35)
+topBar.Parent = mainFrame
+
+local topBarCorner = Instance.new("UICorner")
+topBarCorner.CornerRadius = UDim.new(0, 15)
+topBarCorner.Parent = topBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(0, 200, 1, 0)
+titleLabel.Position = UDim2.new(0, 10, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "USER'S SS"
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 22
+titleLabel.TextColor3 = Color3.new(1, 1, 1)
+titleLabel.Parent = topBar
+
+-- Minimize button
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Name = "MinimizeBtn"
+minimizeBtn.Size = UDim2.new(0, 40, 1, 0)
+minimizeBtn.Position = UDim2.new(1, -80, 0, 0)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
+minimizeBtn.Text = "-"
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 28
+minimizeBtn.TextColor3 = Color3.new(1, 1, 1)
+minimizeBtn.Parent = topBar
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 8)
+minCorner.Parent = minimizeBtn
+
+-- Close button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "CloseBtn"
+closeBtn.Size = UDim2.new(0, 40, 1, 0)
+closeBtn.Position = UDim2.new(1, -40, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(220, 30, 30)
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 24
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
+closeBtn.Parent = topBar
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 8)
+closeCorner.Parent = closeBtn
+
+-- Tab buttons container (now scrollable)
+local tabButtonsFrame = Instance.new("ScrollingFrame")
+tabButtonsFrame.Name = "TabButtons"
+tabButtonsFrame.Size = UDim2.new(1, 0, 0, 40)
+tabButtonsFrame.Position = UDim2.new(0, 0, 0, 40)
+tabButtonsFrame.BackgroundTransparency = 1
+tabButtonsFrame.BorderSizePixel = 0
+tabButtonsFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+tabButtonsFrame.AutomaticCanvasSize = Enum.AutomaticSize.X
+tabButtonsFrame.ScrollBarThickness = 0
+tabButtonsFrame.ScrollingDirection = Enum.ScrollingDirection.X
+tabButtonsFrame.Parent = mainFrame
+
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Padding = UDim.new(0, 5)
+tabLayout.Parent = tabButtonsFrame
+
+-- Content frame for tabs
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, 0, 1, -80)
+contentFrame.Position = UDim2.new(0, 0, 0, 80)
+contentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
+contentFrame.BorderSizePixel = 0
+contentFrame.CanvasSize = UDim2.new(0, 0, 5, 0)
+contentFrame.ScrollBarThickness = 8
+contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+contentFrame.Parent = mainFrame
+
+local contentCorner = Instance.new("UICorner")
+contentCorner.CornerRadius = UDim.new(0, 12)
+contentCorner.Parent = contentFrame
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Padding = UDim.new(0, 8)
+contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+contentLayout.Parent = contentFrame
+
+-- Helper function to create buttons with auto-resize
+local function createButton(text, parent, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 160, 0, 35)
+    btn.BackgroundColor3 = Color3.fromRGB(60, 40, 120)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 18
+    btn.Text = text
+    btn.AutoButtonColor = true
+    btn.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = btn
+
+    -- Auto-resize button based on text
+    autoResizeTextElement(btn, 160, 400)
+
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+-- Helper function to create textboxes with rounded edges
+local function createTextBox(placeholder, parent, size)
+    size = size or UDim2.new(0, 200, 0, 30)
+    local textbox = Instance.new("TextBox")
+    textbox.Size = size
+    textbox.PlaceholderText = placeholder
+    textbox.Text = ""
+    textbox.ClearTextOnFocus = false
+    textbox.TextColor3 = Color3.new(1, 1, 1)
+    textbox.BackgroundColor3 = Color3.fromRGB(40, 40, 70)
+    textbox.Font = Enum.Font.Gotham
+    textbox.TextSize = 18
+    textbox.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = textbox
+
+    -- Auto-resize textbox based on text
+    textbox:GetPropertyChangedSignal("Text"):Connect(function()
+        if textbox.Text ~= "" then
+            autoResizeTextElement(textbox, 200, 400)
+        end
+    end)
+
+    return textbox
+end
+
+-- Helper function to create rainbow glowing headers
+local function createRainbowHeader(text, parent)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 30)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamBlack
+    label.TextSize = 24
+    label.Text = text
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextStrokeTransparency = 0.6
+    label.Parent = parent
+
+    local step = 0
+    RunService.RenderStepped:Connect(function()
+        step = step + 0.02
+        label.TextColor3 = RainbowColor(step)
+    end)
+    return label
+end
+
+-- Helper function to create text labels
+local function createTextLabel(text, parent)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 25)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 18
+    label.Parent = parent
+    return label
+end
+
+-- Ban system helper functions
+local function banPlayer(player, minutes, hours, days)
+    local totalMinutes = minutes + (hours * 60) + (days * 1440)
+    local banEndTime = tick() + (totalMinutes * 60)
+    
+    bannedPlayers[player.UserId] = {
+        name = player.Name,
+        banEndTime = banEndTime,
+        totalTime = totalMinutes
+    }
+    
+    player:Kick("You have been banned for " .. totalMinutes .. " minutes.")
+    return totalMinutes
+end
+
+local function checkBanStatus(player)
+    local banData = bannedPlayers[player.UserId]
+    if banData and tick() < banData.banEndTime then
+        local timeLeft = math.ceil((banData.banEndTime - tick()) / 60)
+        player:Kick("You are still banned. Time remaining: " .. timeLeft .. " minutes.")
+        return true
+    elseif banData and tick() >= banData.banEndTime then
+        bannedPlayers[player.UserId] = nil -- Remove expired ban
+    end
+    return false
+end
+
+-- Monitor players joining to check bans
+Players.PlayerAdded:Connect(function(player)
+    checkBanStatus(player)
+end)
+
+-- UPDATED Fling helper function with proper power scaling
+local function flingPlayer(player, power)
+    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        local humanoidRootPart = player.Character.HumanoidRootPart
+        
+        -- Scale power properly:
+        -- 1 = minimal (1 stud movement)
+        -- 25 = light (10 studs, stays grounded)
+        -- 50 = normal (20 studs, good ragdoll)
+        -- 75 = strong (almost off map)
+        -- 100 = maximum (off the map)
+        
+        local scaledPower
+        if power <= 1 then
+            scaledPower = 5 -- Very minimal force
+        elseif power <= 25 then
+            scaledPower = power * 2 -- Light scaling
+        elseif power <= 50 then
+            scaledPower = power * 4 -- Normal scaling
+        elseif power <= 75 then
+            scaledPower = power * 8 -- Strong scaling
+        else
+            scaledPower = power * 15 -- Maximum scaling
+        end
+        
+        local bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bodyVelocity.Velocity = Vector3.new(
+            math.random(-scaledPower, scaledPower),
+            math.random(scaledPower/2, scaledPower),
+            math.random(-scaledPower, scaledPower)
+        )
+        bodyVelocity.Parent = humanoidRootPart
+        
+        -- Remove the velocity after a short time
+        game:GetService("Debris"):AddItem(bodyVelocity, 0.5)
+        return true
+    end
+    return false
+end
+
+-- UPDATED Force chat message helper function (REMOVED BILLBOARD GUI)
+local function forceChatMessage(player, message)
+    if player.Character and player.Character:FindFirstChild("Head") then
+        -- Only try to send actual chat message (realistic looking one)
+        pcall(function()
+            if game:GetService("Chat") then
+                game:GetService("Chat"):Chat(player.Character.Head, message)
+            end
+        end)
+        
+        return true
+    end
+    return false
+end
+
+-- Tabs container
+local tabs = {}
+
+-- Function to clear content frame children (except layout/corners)
+local function clearContent()
+    for _, child in pairs(contentFrame:GetChildren()) do
+        if not (child:IsA("UIListLayout") or child:IsA("UICorner")) then
+            child:Destroy()
+        end
+    end
+end
+
+-- Switch tab function
+local currentTab = nil
+local function switchTab(name)
+    if currentTab == name then return end
+    if not tabs[name] then return end
+    clearContent()
+    tabs[name].setup(contentFrame)
+    currentTab = name
+end
+
+-- Create tab buttons with auto-resize
+local function createTabBtn(name)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 100, 1, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(50, 30, 110)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 18
+    btn.Text = name
+    btn.AutoButtonColor = true
+    btn.Parent = tabButtonsFrame
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = btn
+
+    -- Auto-resize tab button
+    autoResizeTextElement(btn, 100, 150)
+
+    btn.MouseButton1Click:Connect(function()
+        switchTab(name)
+    end)
+    return btn
+end
+-- PART 2 - TAB IMPLEMENTATIONS WITH FIXED FLING FEATURE
+
+-- Players Tab
+tabs["Players"] = {
+    setup = function(frame)
+        -- Speed header
+        createRainbowHeader("Speed", frame)
+        
+        -- Speed Amount textbox
+        createTextLabel("Speed Amount", frame)
+        local speedAmountBox = createTextBox("Enter speed amount", frame)
+        
+        -- Speed All button
+        createButton("Speed All", frame, function()
+            local speedAmount = tonumber(speedAmountBox.Text)
+            if not speedAmount then
+                showNotification("Please enter a valid speed amount", true)
+                return
+            end
+            
+            local speedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.WalkSpeed = speedAmount
+                    speedCount = speedCount + 1
+                end
+            end
+            showNotification("Set speed to " .. speedAmount .. " for " .. speedCount .. " players", false)
+        end)
+
+        -- Individual speed controls
+        createTextLabel("Speed Username", frame)
+        local speedUserBox = createTextBox("Enter username", frame)
+        createButton("Speed User", frame, function()
+            local speedAmount = tonumber(speedAmountBox.Text)
+            if not speedAmount then
+                showNotification("Please enter a valid speed amount", true)
+                return
+            end
+            
+            local targetPlayer = findPlayerByName(speedUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. speedUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+                targetPlayer.Character.Humanoid.WalkSpeed = speedAmount
+                showNotification("Set " .. targetPlayer.Name .. "'s speed to " .. speedAmount, false)
+            end
+        end)
+
+        -- Camera Mode header
+        createRainbowHeader("Camera Mode", frame)
+        createButton("First Person Others", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    plr.CameraMode = Enum.CameraMode.LockFirstPerson
+                end
+            end
+            showNotification("Locked others to first person", false)
+        end)
+        createButton("Normal Camera Others", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    plr.CameraMode = Enum.CameraMode.Classic
+                end
+            end
+            showNotification("Reset camera for others", false)
+        end)
+
+        -- Individual camera controls
+        createTextLabel("Camera Username", frame)
+        local cameraUserBox = createTextBox("Enter username", frame)
+        createButton("First Person User", frame, function()
+            local targetPlayer = findPlayerByName(cameraUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. cameraUserBox.Text, true)
+                return
+            end
+            targetPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
+            showNotification("Set " .. targetPlayer.Name .. " to first person", false)
+        end)
+        createButton("Normal Camera User", frame, function()
+            local targetPlayer = findPlayerByName(cameraUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. cameraUserBox.Text, true)
+                return
+            end
+            targetPlayer.CameraMode = Enum.CameraMode.Classic
+            showNotification("Reset " .. targetPlayer.Name .. " camera", false)
+        end)
+
+        -- Blinding header
+        createRainbowHeader("Blinding", frame)
+        createButton("Blind Others", frame, function()
+            local blindedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr:FindFirstChild("PlayerGui") then
+                    pcall(function()
+                        -- Create persistent blinding GUI for each player
+                        local blindGui = Instance.new("ScreenGui")
+                        blindGui.Name = "BlindingScreen"
+                        blindGui.Parent = plr.PlayerGui
+                        blindGui.ResetOnSpawn = false
+                        blindGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+                        local blindFrame = Instance.new("Frame")
+                        blindFrame.Size = UDim2.new(1, 0, 1, 0)
+                        blindFrame.Position = UDim2.new(0, 0, 0, 0)
+                        blindFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+                        blindFrame.BorderSizePixel = 0
+                        blindFrame.Parent = blindGui
+                        blindFrame.ZIndex = 10000
+
+                        blindedCount = blindedCount + 1
+                    end)
+                end
+            end
+            showNotification("Blinded " .. blindedCount .. " players", false)
+        end)
+
+        createButton("Unblind Others", frame, function()
+            local unblinedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr:FindFirstChild("PlayerGui") then
+                    local blindGui = plr.PlayerGui:FindFirstChild("BlindingScreen")
+                    if blindGui then
+                        blindGui:Destroy()
+                        unblinedCount = unblinedCount + 1
+                    end
+                end
+            end
+            showNotification("Unblinded " .. unblinedCount .. " players", false)
+        end)
+
+        -- Individual blind controls
+        createTextLabel("Blind Username", frame)
+        local blindUserBox = createTextBox("Enter username", frame)
+        createButton("Blind User", frame, function()
+            local targetPlayer = findPlayerByName(blindUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. blindUserBox.Text, true)
+                return
+            end
+            if targetPlayer:FindFirstChild("PlayerGui") then
+                pcall(function()
+                    local blindGui = Instance.new("ScreenGui")
+                    blindGui.Name = "BlindingScreen"
+                    blindGui.Parent = targetPlayer.PlayerGui
+                    blindGui.ResetOnSpawn = false
+                    blindGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+                    local blindFrame = Instance.new("Frame")
+                    blindFrame.Size = UDim2.new(1, 0, 1, 0)
+                    blindFrame.Position = UDim2.new(0, 0, 0, 0)
+                    blindFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+                    blindFrame.BorderSizePixel = 0
+                    blindFrame.Parent = blindGui
+                    blindFrame.ZIndex = 10000
+
+                    showNotification("Blinded " .. targetPlayer.Name, false)
+                end)
+            end
+        end)
+        createButton("Unblind User", frame, function()
+            local targetPlayer = findPlayerByName(blindUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. blindUserBox.Text, true)
+                return
+            end
+            if targetPlayer:FindFirstChild("PlayerGui") then
+                local blindGui = targetPlayer.PlayerGui:FindFirstChild("BlindingScreen")
+                if blindGui then
+                    blindGui:Destroy()
+                    showNotification("Unblinded " .. targetPlayer.Name, false)
+                end
+            end
+        end)
+
+        -- Invis Stuff header
+        createRainbowHeader("Invis Stuff", frame)
+        createButton("Invis Others", frame, function()
+            local invisCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character then
+                    for _, part in pairs(plr.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            part.Transparency = 1
+                            invisCount = invisCount + 1
+                        end
+                    end
+                    -- Also make accessories invisible
+                    for _, accessory in pairs(plr.Character:GetChildren()) do
+                        if accessory:IsA("Accessory") and accessory:FindFirstChild("Handle") then
+                            accessory.Handle.Transparency = 1
+                        end
+                    end
+                end
+            end
+            showNotification("Made others invisible", false)
+        end)
+        createButton("Uninvis Others", frame, function()
+            local unInvisCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character then
+                    for _, part in pairs(plr.Character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            if part.Name == "Head" then
+                                part.Transparency = 0
+                            elseif part.Name ~= "HumanoidRootPart" then
+                                part.Transparency = 0
+                            end
+                            unInvisCount = unInvisCount + 1
+                        end
+                    end
+                    -- Also make accessories visible
+                    for _, accessory in pairs(plr.Character:GetChildren()) do
+                        if accessory:IsA("Accessory") and accessory:FindFirstChild("Handle") then
+                            accessory.Handle.Transparency = 0
+                        end
+                    end
+                end
+            end
+            showNotification("Made others visible", false)
+        end)
+
+        -- Individual invis controls
+        createTextLabel("Invis Username", frame)
+        local invisUserBox = createTextBox("Enter username", frame)
+        createButton("Invis User", frame, function()
+            local targetPlayer = findPlayerByName(invisUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. invisUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character then
+                for _, part in pairs(targetPlayer.Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.Transparency = 1
+                    end
+                end
+                for _, accessory in pairs(targetPlayer.Character:GetChildren()) do
+                    if accessory:IsA("Accessory") and accessory:FindFirstChild("Handle") then
+                        accessory.Handle.Transparency = 1
+                    end
+                end
+                showNotification("Made " .. targetPlayer.Name .. " invisible", false)
+            end
+        end)
+        createButton("Uninvis User", frame, function()
+            local targetPlayer = findPlayerByName(invisUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. invisUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character then
+                for _, part in pairs(targetPlayer.Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        if part.Name == "Head" then
+                            part.Transparency = 0
+                        elseif part.Name ~= "HumanoidRootPart" then
+                            part.Transparency = 0
+                        end
+                    end
+                end
+                for _, accessory in pairs(targetPlayer.Character:GetChildren()) do
+                    if accessory:IsA("Accessory") and accessory:FindFirstChild("Handle") then
+                        accessory.Handle.Transparency = 0
+                    end
+                end
+                showNotification("Made " .. targetPlayer.Name .. " visible", false)
+            end
+        end)
+
+        -- God Mode header
+        createRainbowHeader("God Mode", frame)
+        createButton("God Mode All", frame, function()
+            local godCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.MaxHealth = 9999999
+                    plr.Character.Humanoid.Health = 9999999
+                    godCount = godCount + 1
+                end
+            end
+            showNotification("God mode applied to " .. godCount .. " players", false)
+        end)
+
+        createButton("Ungod Mode All", frame, function()
+            local ungodCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.MaxHealth = 100
+                    plr.Character.Humanoid.Health = 100
+                    ungodCount = ungodCount + 1
+                end
+            end
+            showNotification("God mode removed from " .. ungodCount .. " players", false)
+        end)
+
+        -- Individual god mode controls
+        createTextLabel("God Mode Username", frame)
+        local godUserBox = createTextBox("Enter username", frame)
+        createButton("God Mode User", frame, function()
+            local targetPlayer = findPlayerByName(godUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. godUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+                targetPlayer.Character.Humanoid.MaxHealth = 9999999
+                targetPlayer.Character.Humanoid.Health = 9999999
+                showNotification("God mode applied to " .. targetPlayer.Name, false)
+            end
+        end)
+        createButton("Ungod Mode User", frame, function()
+            local targetPlayer = findPlayerByName(godUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. godUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+                targetPlayer.Character.Humanoid.MaxHealth = 100
+                targetPlayer.Character.Humanoid.Health = 100
+                showNotification("God mode removed from " .. targetPlayer.Name, false)
+            end
+        end)
+
+        -- Avatar Stuff header
+        createRainbowHeader("Avatar Stuff", frame)
+        
+        createTextLabel("User ID", frame)
+        local userIdBox = createTextBox("Enter User ID", frame)
+
+        createButton("Char Others", frame, function()
+            local userId = tonumber(userIdBox.Text)
+            if not userId then
+                showNotification("Invalid User ID", true)
+                return
+            end
+            
+            local changedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    pcall(function()
+                        plr.CharacterAppearanceId = userId
+                        if plr.Character then
+                            plr:LoadCharacter()
+                        end
+                        changedCount = changedCount + 1
+                    end)
+                end
+            end
+            showNotification("Changed " .. changedCount .. " player avatars to User ID: " .. userId, false)
+        end)
+
+        -- Individual avatar controls
+        createTextLabel("Avatar Username", frame)
+        local avatarUserBox = createTextBox("Enter username", frame)
+        createButton("Char User", frame, function()
+            local userId = tonumber(userIdBox.Text)
+            local targetPlayer = findPlayerByName(avatarUserBox.Text)
+            if not userId then
+                showNotification("Invalid User ID", true)
+                return
+            end
+            if not targetPlayer then
+                showNotification("Player not found: " .. avatarUserBox.Text, true)
+                return
+            end
+            pcall(function()
+                targetPlayer.CharacterAppearanceId = userId
+                if targetPlayer.Character then
+                    targetPlayer:LoadCharacter()
+                end
+                showNotification("Changed " .. targetPlayer.Name .. " avatar to User ID: " .. userId, false)
+            end)
+        end)
+    end
+}
+
+-- Chat Tab with NEW MESSAGE FEATURES (UPDATED)
+tabs["Chat"] = {
+    setup = function(frame)
+        createRainbowHeader("Chat Effects", frame)
+
+        local bgColorBox = createTextBox("RGB code for chat background", frame)
+        local textColorBox = createTextBox("RGB code for text color", frame)
+
+        local startRainbowBtn = createButton("Start Rainbow Chat", frame, function()
+            -- Stop any existing rainbow chat effect
+            if rainbowChatConnection then
+                rainbowChatConnection:Disconnect()
+            end
+            
+            local step = 0
+            rainbowChatConnection = RunService.RenderStepped:Connect(function()
+                step = step + 0.02
+                local r = math.floor(math.sin(step) * 127 + 128)
+                local g = math.floor(math.sin(step + 2) * 127 + 128)
+                local b = math.floor(math.sin(step + 4) * 127 + 128)
+                local chatConfig = TextChatService.ChatWindowConfiguration
+                chatConfig.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                chatConfig.TextColor3 = Color3.fromRGB(r, g, b)
+                chatConfig.BackgroundTransparency = 0
+            end)
+            showNotification("Rainbow chat enabled", false)
+        end)
+
+        local normalChatBtn = createButton("Normal Chat", frame, function()
+            -- Stop rainbow chat effect
+            if rainbowChatConnection then
+                rainbowChatConnection:Disconnect()
+                rainbowChatConnection = nil
+            end
+            
+            local chatConfig = TextChatService.ChatWindowConfiguration
+            chatConfig.BackgroundColor3 = Color3.fromRGB(25, 27, 29)
+            chatConfig.TextColor3 = Color3.fromRGB(255, 255, 255)
+            chatConfig.BackgroundTransparency = 0.3
+            showNotification("Chat reset to normal", false)
+        end)
+
+        local setColorsBtn = createButton("Set Colors", frame, function()
+            local bgColorText = bgColorBox.Text
+            local textColorText = textColorBox.Text
+            local bgR, bgG, bgB = bgColorText:match("(%d+),%s*(%d+),%s*(%d+)")
+            local textR, textG, textB = textColorText:match("(%d+),%s*(%d+),%s*(%d+)")
+            if bgR and bgG and bgB and textR and textG and textB then
+                bgR, bgG, bgB, textR, textG, textB = tonumber(bgR), tonumber(bgG), tonumber(bgB), tonumber(textR), tonumber(textG), tonumber(textB)
+                if bgR and bgG and bgB and textR and textG and textB and bgR <= 255 and bgG <= 255 and bgB <= 255 and textR <= 255 and textG <= 255 and textB <= 255 then
+                    local chatConfig = TextChatService.ChatWindowConfiguration
+                    chatConfig.BackgroundColor3 = Color3.fromRGB(bgR, bgG, bgB)
+                    chatConfig.TextColor3 = Color3.fromRGB(textR, textG, textB)
+                    chatConfig.BackgroundTransparency = 0
+                    showNotification("Chat colors applied", false)
+                else
+                    showNotification("Invalid RGB values (must be 0-255)", true)
+                end
+            else
+                showNotification("Invalid RGB format (use: R,G,B)", true)
+            end
+        end)
+
+        -- NEW MESSAGE FEATURES (UPDATED - NO MORE BILLBOARD GUI)
+        createRainbowHeader("Force Chat Messages", frame)
+        
+        createTextLabel("Message", frame)
+        local messageBox = createTextBox("Enter message to send", frame)
+        
+        createTextLabel("User to Have Message", frame)
+        local userToMessageBox = createTextBox("Enter username", frame)
+        
+        createButton("Make All Message", frame, function()
+            local message = messageBox.Text
+            if message == "" then
+                showNotification("Please enter a message", true)
+                return
+            end
+            
+            local messageCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if forceChatMessage(plr, message) then
+                    messageCount = messageCount + 1
+                end
+            end
+            showNotification("Made " .. messageCount .. " players say: \"" .. message .. "\"", false)
+        end)
+        
+        createButton("User to Message", frame, function()
+            local message = messageBox.Text
+            local username = userToMessageBox.Text
+            
+            if message == "" then
+                showNotification("Please enter a message", true)
+                return
+            end
+            
+            if username == "" then
+                showNotification("Please enter a username", true)
+                return
+            end
+            
+            local targetPlayer = findPlayerByName(username)
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            if forceChatMessage(targetPlayer, message) then
+                showNotification("Made " .. targetPlayer.Name .. " say: \"" .. message .. "\"", false)
+            else
+                showNotification("Failed to make " .. targetPlayer.Name .. " chat", true)
+            end
+        end)
+    end
+}
+
+-- NEW BAN STUFF TAB
+tabs["Ban Stuff"] = {
+    setup = function(frame)
+        createRainbowHeader("Ban Controls", frame)
+        
+        -- Time input textboxes
+        createTextLabel("Ban Time Minutes", frame)
+        local banMinutesBox = createTextBox("Enter minutes", frame)
+        
+        createTextLabel("Ban Time Hours", frame)
+        local banHoursBox = createTextBox("Enter hours", frame)
+        
+        createTextLabel("Ban Time Days", frame)
+        local banDaysBox = createTextBox("Enter days", frame)
+        
+        createTextLabel("User to Ban", frame)
+        local userToBanBox = createTextBox("Enter username to ban", frame)
+        
+        createButton("Ban User", frame, function()
+            local username = userToBanBox.Text
+            local minutes = tonumber(banMinutesBox.Text) or 0
+            local hours = tonumber(banHoursBox.Text) or 0
+            local days = tonumber(banDaysBox.Text) or 0
+            
+            if username == "" then
+                showNotification("Please enter a username to ban", true)
+                return
+            end
+            
+            if minutes == 0 and hours == 0 and days == 0 then
+                showNotification("Please enter a ban duration", true)
+                return
+            end
+            
+            local targetPlayer = findPlayerByName(username)
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            local totalMinutes = banPlayer(targetPlayer, minutes, hours, days)
+            showNotification("Banned " .. targetPlayer.Name .. " for " .. totalMinutes .. " minutes", false)
+        end)
+        
+        createButton("Ban Others", frame, function()
+            local minutes = tonumber(banMinutesBox.Text) or 0
+            local hours = tonumber(banHoursBox.Text) or 0
+            local days = tonumber(banDaysBox.Text) or 0
+            
+            if minutes == 0 and hours == 0 and days == 0 then
+                showNotification("Please enter a ban duration", true)
+                return
+            end
+            
+            local bannedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    banPlayer(plr, minutes, hours, days)
+                    bannedCount = bannedCount + 1
+                end
+            end
+            
+            local totalMinutes = minutes + (hours * 60) + (days * 1440)
+            showNotification("Banned " .. bannedCount .. " players for " .. totalMinutes .. " minutes", false)
+        end)
+        
+        -- Show current bans
+        createRainbowHeader("Current Bans", frame)
+        
+        createButton("Show Banned Players", frame, function()
+            local banList = {}
+            for userId, banData in pairs(bannedPlayers) do
+                if tick() < banData.banEndTime then
+                    local timeLeft = math.ceil((banData.banEndTime - tick()) / 60)
+                    table.insert(banList, banData.name .. " (" .. timeLeft .. " min left)")
+                end
+            end
+            
+            if #banList > 0 then
+                showNotification("Banned: " .. table.concat(banList, ", "), false)
+            else
+                showNotification("No players are currently banned", false)
+            end
+        end)
+        
+        createButton("Clear All Bans", frame, function()
+            local clearedCount = 0
+            for userId, _ in pairs(bannedPlayers) do
+                clearedCount = clearedCount + 1
+            end
+            bannedPlayers = {}
+            showNotification("Cleared " .. clearedCount .. " bans", false)
+        end)
+    end
+}
+
+-- Skybox Tab
+tabs["Skybox"] = {
+    setup = function(frame)
+        createRainbowHeader("Skybox Controls", frame)
+
+        local colorBox = createTextBox("RGB code (e.g. 255,255,255)", frame)
+
+        local applyColorBtn = createButton("Apply Color", frame, function()
+            local text = colorBox.Text
+            local r, g, b = text:match("(%d+),%s*(%d+),%s*(%d+)")
+            if r and g and b then
+                r, g, b = tonumber(r), tonumber(g), tonumber(b)
+                if r and g and b and r <= 255 and g <= 255 and b <= 255 then
+                    Lighting:SetMinutesAfterMidnight(720)
+                    local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky", Lighting)
+                    sky.SkyboxBk = ""
+                    sky.SkyboxDn = ""
+                    sky.SkyboxFt = ""
+                    sky.SkyboxLf = ""
+                    sky.SkyboxRt = ""
+                    sky.SkyboxUp = ""
+                    local cc = Lighting:FindFirstChild("ColorCorrection") or Instance.new("ColorCorrectionEffect", Lighting)
+                    cc.TintColor = Color3.fromRGB(r, g, b)
+                    showNotification("Skybox color applied", false)
+                else
+                    showNotification("Invalid RGB values (must be 0-255)", true)
+                end
+            else
+                showNotification("Invalid RGB format (use: R,G,B)", true)
+            end
+        end)
+
+        local revertBtn = createButton("Revert Sky", frame, function()
+            -- Stop disco sky effect
+            if discoSkyConnection then
+                discoSkyConnection:Disconnect()
+                discoSkyConnection = nil
+            end
+            
+            local cc = Lighting:FindFirstChild("ColorCorrection")
+            if cc then cc:Destroy() end
+            local sky = Lighting:FindFirstChildOfClass("Sky")
+            if sky then sky:Destroy() end
+            Lighting:SetMinutesAfterMidnight(720)
+            showNotification("Sky reverted to default", false)
+        end)
+
+        local discoBtn = createButton("Disco Sky", frame, function()
+            -- Stop any existing disco sky effect
+            if discoSkyConnection then
+                discoSkyConnection:Disconnect()
+            end
+            
+            -- Create or get ColorCorrection effect
+            local cc = Lighting:FindFirstChild("ColorCorrection") or Instance.new("ColorCorrectionEffect", Lighting)
+            cc.Name = "ColorCorrection"
+            
+            -- Clear skybox textures
+            local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky", Lighting)
+            sky.SkyboxBk = ""
+            sky.SkyboxDn = ""
+            sky.SkyboxFt = ""
+            sky.SkyboxLf = ""
+            sky.SkyboxRt = ""
+            sky.SkyboxUp = ""
+            
+            local step = 0
+            discoSkyConnection = RunService.RenderStepped:Connect(function()
+                step = step + 0.02
+                local r = math.floor(math.sin(step) * 127 + 128)
+                local g = math.floor(math.sin(step + 2) * 127 + 128)
+                local b = math.floor(math.sin(step + 4) * 127 + 128)
+                cc.TintColor = Color3.fromRGB(r, g, b)
+            end)
+            showNotification("Disco sky activated", false)
+        end)
+    end
+}
+
+-- Music Tab with enhanced controls
+tabs["Music"] = {
+    setup = function(frame)
+        createRainbowHeader("Music Controls", frame)
+
+        local musicIdBox = createTextBox("Enter Music ID", frame)
+        
+        -- Speed controls
+        createTextLabel("Playback Speed", frame)
+        local speedBox = createTextBox("Enter playback speed", frame)
+
+        local soundObject = workspace:FindFirstChild("MusicPlayer") or Instance.new("Sound", workspace)
+        soundObject.Name = "MusicPlayer"
+        soundObject.Volume = 0.5
+        soundObject.Looped = true
+
+        createButton("Start Music", frame, function()
+            local id = tonumber(musicIdBox.Text)
+            if id then
+                soundObject.SoundId = "rbxassetid://" .. id
+                soundObject:Play()
+                showNotification("Music started", false)
+            else
+                showNotification("Invalid Music ID", true)
+            end
+        end)
+
+        createButton("Stop Music", frame, function()
+            soundObject:Stop()
+            showNotification("Music stopped", false)
+        end)
+
+        createButton("Set Speed", frame, function()
+            local speed = tonumber(speedBox.Text)
+            if speed and speed > 0 then
+                soundObject.PlaybackSpeed = speed
+                showNotification("Playback speed set to " .. speed .. "x", false)
+            else
+                showNotification("Invalid speed (must be > 0)", true)
+            end
+        end)
+    end
+}
+
+-- Particles Tab
+tabs["Particles"] = {
+    setup = function(frame)
+        createRainbowHeader("Particle Effects", frame)
+
+        -- Fire section
+        createRainbowHeader("Fire", frame)
+        createButton("Fire Particle All", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Torso") then
+                    local fire = Instance.new("Fire")
+                    fire.Name = "AdminFire"
+                    fire.Size = 5
+                    fire.Heat = 10
+                    fire.Parent = plr.Character.Torso
+                elseif plr.Character and plr.Character:FindFirstChild("UpperTorso") then
+                    local fire = Instance.new("Fire")
+                    fire.Name = "AdminFire"
+                    fire.Size = 5
+                    fire.Heat = 10
+                    fire.Parent = plr.Character.UpperTorso
+                end
+            end
+            showNotification("Fire particles applied to all players", false)
+        end)
+
+        createButton("Stop Fire Particle All", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character then
+                    for _, part in pairs(plr.Character:GetChildren()) do
+                        if part:FindFirstChild("AdminFire") then
+                            part.AdminFire:Destroy()
+                        end
+                    end
+                end
+            end
+            showNotification("Fire particles removed from all players", false)
+        end)
+
+        -- Individual fire controls
+        createTextLabel("Fire Username", frame)
+        local fireUserBox = createTextBox("Enter username", frame)
+        createButton("Fire User", frame, function()
+            local targetPlayer = findPlayerByName(fireUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. fireUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Torso") then
+                local fire = Instance.new("Fire")
+                fire.Name = "AdminFire"
+                fire.Size = 5
+                fire.Heat = 10
+                fire.Parent = targetPlayer.Character.Torso
+                showNotification("Fire particles applied to " .. targetPlayer.Name, false)
+            elseif targetPlayer.Character and targetPlayer.Character:FindFirstChild("UpperTorso") then
+                local fire = Instance.new("Fire")
+                fire.Name = "AdminFire"
+                fire.Size = 5
+                fire.Heat = 10
+                fire.Parent = targetPlayer.Character.UpperTorso
+                showNotification("Fire particles applied to " .. targetPlayer.Name, false)
+            end
+        end)
+        createButton("Stop Fire User", frame, function()
+            local targetPlayer = findPlayerByName(fireUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. fireUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character then
+                for _, part in pairs(targetPlayer.Character:GetChildren()) do
+                    if part:FindFirstChild("AdminFire") then
+                        part.AdminFire:Destroy()
+                    end
+                end
+                showNotification("Fire particles removed from " .. targetPlayer.Name, false)
+            end
+        end)
+
+        -- Sparkle section
+        createRainbowHeader("Sparkle", frame)
+        createButton("Sparkle Particle All", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Torso") then
+                    local sparkle = Instance.new("Sparkles")
+                    sparkle.Name = "AdminSparkle"
+                    sparkle.SparkleColor = Color3.new(1, 1, 1)
+                    sparkle.Parent = plr.Character.Torso
+                elseif plr.Character and plr.Character:FindFirstChild("UpperTorso") then
+                    local sparkle = Instance.new("Sparkles")
+                    sparkle.Name = "AdminSparkle"
+                    sparkle.SparkleColor = Color3.new(1, 1, 1)
+                    sparkle.Parent = plr.Character.UpperTorso
+                end
+            end
+            showNotification("Sparkle particles applied to all players", false)
+        end)
+
+        createButton("Stop Sparkle Particle All", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character then
+                    for _, part in pairs(plr.Character:GetChildren()) do
+                        if part:FindFirstChild("AdminSparkle") then
+                            part.AdminSparkle:Destroy()
+                        end
+                    end
+                end
+            end
+            showNotification("Sparkle particles removed from all players", false)
+        end)
+
+        -- Individual sparkle controls
+        createTextLabel("Sparkle Username", frame)
+        local sparkleUserBox = createTextBox("Enter username", frame)
+        createButton("Sparkle User", frame, function()
+            local targetPlayer = findPlayerByName(sparkleUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. sparkleUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Torso") then
+                local sparkle = Instance.new("Sparkles")
+                sparkle.Name = "AdminSparkle"
+                sparkle.SparkleColor = Color3.new(1, 1, 1)
+                sparkle.Parent = targetPlayer.Character.Torso
+                showNotification("Sparkle particles applied to " .. targetPlayer.Name, false)
+            elseif targetPlayer.Character and targetPlayer.Character:FindFirstChild("UpperTorso") then
+                local sparkle = Instance.new("Sparkles")
+                sparkle.Name = "AdminSparkle"
+                sparkle.SparkleColor = Color3.new(1, 1, 1)
+                sparkle.Parent = targetPlayer.Character.UpperTorso
+                showNotification("Sparkle particles applied to " .. targetPlayer.Name, false)
+            end
+        end)
+        createButton("Stop Sparkle User", frame, function()
+            local targetPlayer = findPlayerByName(sparkleUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. sparkleUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character then
+                for _, part in pairs(targetPlayer.Character:GetChildren()) do
+                    if part:FindFirstChild("AdminSparkle") then
+                        part.AdminSparkle:Destroy()
+                    end
+                end
+                showNotification("Sparkle particles removed from " .. targetPlayer.Name, false)
+            end
+        end)
+
+        -- Smoke section
+        createRainbowHeader("Smoke", frame)
+        createButton("Smoke Particle All", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("Torso") then
+                    local smoke = Instance.new("Smoke")
+                    smoke.Name = "AdminSmoke"
+                    smoke.Size = 5
+                    smoke.Opacity = 0.8
+                    smoke.RiseVelocity = 5
+                    smoke.Parent = plr.Character.Torso
+                elseif plr.Character and plr.Character:FindFirstChild("UpperTorso") then
+                    local smoke = Instance.new("Smoke")
+                    smoke.Name = "AdminSmoke"
+                    smoke.Size = 5
+                    smoke.Opacity = 0.8
+                    smoke.RiseVelocity = 5
+                    smoke.Parent = plr.Character.UpperTorso
+                end
+            end
+            showNotification("Smoke particles applied to all players", false)
+        end)
+
+        createButton("Stop Smoke Particle All", frame, function()
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr.Character then
+                    for _, part in pairs(plr.Character:GetChildren()) do
+                        if part:FindFirstChild("AdminSmoke") then
+                            part.AdminSmoke:Destroy()
+                        end
+                    end
+                end
+            end
+            showNotification("Smoke particles removed from all players", false)
+        end)
+
+        -- Individual smoke controls
+        createTextLabel("Smoke Username", frame)
+        local smokeUserBox = createTextBox("Enter username", frame)
+        createButton("Smoke User", frame, function()
+            local targetPlayer = findPlayerByName(smokeUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. smokeUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Torso") then
+                local smoke = Instance.new("Smoke")
+                smoke.Name = "AdminSmoke"
+                smoke.Size = 5
+                smoke.Opacity = 0.8
+                smoke.RiseVelocity = 5
+                smoke.Parent = targetPlayer.Character.Torso
+                showNotification("Smoke particles applied to " .. targetPlayer.Name, false)
+            elseif targetPlayer.Character and targetPlayer.Character:FindFirstChild("UpperTorso") then
+                local smoke = Instance.new("Smoke")
+                smoke.Name = "AdminSmoke"
+                smoke.Size = 5
+                smoke.Opacity = 0.8
+                smoke.RiseVelocity = 5
+                smoke.Parent = targetPlayer.Character.UpperTorso
+                showNotification("Smoke particles applied to " .. targetPlayer.Name, false)
+            end
+        end)
+        createButton("Stop Smoke User", frame, function()
+            local targetPlayer = findPlayerByName(smokeUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. smokeUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character then
+                for _, part in pairs(targetPlayer.Character:GetChildren()) do
+                    if part:FindFirstChild("AdminSmoke") then
+                        part.AdminSmoke:Destroy()
+                    end
+                end
+                showNotification("Smoke particles removed from " .. targetPlayer.Name, false)
+            end
+        end)
+    end
+}
+
+-- Settings Tab
+tabs["Settings"] = {
+    setup = function(frame)
+        createRainbowHeader("Settings", frame)
+
+        -- Transparency textbox
+        createTextLabel("GUI Transparency: 0", frame)
+        local transBox = createTextBox("Enter transparency (0-1)", frame)
+
+        local applyTransBtn = createButton("Apply Transparency", frame, function()
+            local transparency = tonumber(transBox.Text)
+            if transparency and transparency >= 0 and transparency <= 1 then
+                mainFrame.BackgroundTransparency = transparency
+                topBar.BackgroundTransparency = transparency
+                tabButtonsFrame.BackgroundTransparency = transparency
+                contentFrame.BackgroundTransparency = transparency
+                showNotification("Transparency applied", false)
+            else
+                showNotification("Invalid transparency (must be 0-1)", true)
+            end
+        end)
+
+        -- Color Picker - basic RGB input for background color
+        local colorInput = createTextBox("Background Color RGB (e.g. 25,25,50)", frame)
+
+        local applyColorBtn = createButton("Apply Background Color", frame, function()
+            local text = colorInput.Text
+            local r, g, b = text:match("(%d+),%s*(%d+),%s*(%d+)")
+            if r and g and b then
+                r, g, b = tonumber(r), tonumber(g), tonumber(b)
+                if r and g and b and r <= 255 and g <= 255 and b <= 255 then
+                    mainFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                    topBar.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                    tabButtonsFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                    contentFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
+                    showNotification("Background color applied", false)
+                else
+                    showNotification("Invalid RGB values (must be 0-255)", true)
+                end
+            else
+                showNotification("Invalid RGB format (use: R,G,B)", true)
+            end
+        end)
+    end
+}
+
+-- Spam Tab
+tabs["Spam"] = {
+    setup = function(frame)
+        createRainbowHeader("Spam Controls", frame)
+
+        local spamConnection = nil
+
+        local startSpamBtn = createButton("Start Part Spam", frame, function()
+            -- Stop any existing spam
+            if spamConnection then
+                spamConnection:Disconnect()
+            end
+            
+            spamConnection = RunService.Heartbeat:Connect(function()
+                -- Calculate average player position
+                local totalPosition = Vector3.new(0, 0, 0)
+                local playerCount = 0
+                
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        totalPosition = totalPosition + player.Character.HumanoidRootPart.Position
+                        playerCount = playerCount + 1
+                    end
+                end
+                
+                local averagePosition = Vector3.new(0, 150, 0) -- Default if no players (150 studs up)
+                if playerCount > 0 then
+                    averagePosition = totalPosition / playerCount
+                    averagePosition = Vector3.new(averagePosition.X, averagePosition.Y + 100, averagePosition.Z) -- 100 studs above players
+                end
+                
+                -- Spawn 40 parts around average position
+                local newParts = {}
+                for i = 1, 40 do
+                    local part = Instance.new("Part")
+                    part.Name = "SpamPart"
+                    part.Size = Vector3.new(5, 5, 5) -- 5x5x5 stud cubes
+                    part.Material = Enum.Material.Neon
+                    part.Color = Color3.new(1, 1, 1) -- Bright white
+                    part.CanCollide = false -- Collide off
+                    part.Anchored = true
+                    
+                    -- Random position within 300 stud radius
+                    local angle = math.random() * math.pi * 2
+                    local distance = math.random(10, 300)
+                    local x = averagePosition.X + math.cos(angle) * distance
+                    local z = averagePosition.Z + math.sin(angle) * distance
+                    local y = averagePosition.Y + math.random(-20, 20) -- Small vertical variation from the 100 stud height
+                    
+                    part.Position = Vector3.new(x, y, z)
+                    part.Parent = Workspace
+                    table.insert(newParts, part)
+                end
+            end)
+            showNotification("Part spam started", false)
+        end)
+
+        local stopSpamBtn = createButton("End Part Spam", frame, function()
+            -- Stop spawning
+            if spamConnection then
+                spamConnection:Disconnect()
+                spamConnection = nil
+            end
+            
+            -- Clean up all spam parts
+            for _, child in pairs(Workspace:GetChildren()) do
+                if child:IsA("Part") and child.Name == "SpamPart" then
+                    child:Destroy()
+                end
+            end
+            showNotification("Part spam stopped", false)
+        end)
+    end
+}
+
+-- Workspace Tab
+tabs["Workspace"] = {
+    setup = function(frame)
+        createRainbowHeader("Workspace Controls", frame)
+
+        createButton("Delete Terrain", frame, function()
+            local terrain = Workspace:FindFirstChild("Terrain")
+            if terrain then
+                terrain:ReadVoxels(Region3.new(Vector3.new(-2048, -2048, -2048), Vector3.new(2048, 2048, 2048)), 4)
+                terrain:FillRegion(Region3.new(Vector3.new(-2048, -2048, -2048), Vector3.new(2048, 2048, 2048)), 4, Enum.Material.Air)
+                showNotification("Terrain deleted", false)
+            end
+        end)
+
+        createButton("Delete Workspace", frame, function()
+            local deletedCount = 0
+            for _, child in pairs(Workspace:GetChildren()) do
+                if child ~= Workspace.Terrain and child ~= Workspace.Camera and not Players:GetPlayerFromCharacter(child) then
+                    if child:IsA("BasePart") or child:IsA("Model") or child:IsA("Part") or child:IsA("Folder") then
+                        child:Destroy()
+                        deletedCount = deletedCount + 1
+                    end
+                end
+            end
+            showNotification("Workspace cleaned (" .. deletedCount .. " objects)", false)
+        end)
+    end
+}
+
+-- Gears Tab
+tabs["Gears"] = {
+    setup = function(frame)
+        createRainbowHeader("Gear Controls", frame)
+
+        -- Gear ID input
+        createTextLabel("Input Gear ID", frame)
+        local gearIdBox = createTextBox("Enter gear ID", frame)
+
+        -- Give gear to all button
+        createButton("Gear All", frame, function()
+            local gearId = tonumber(gearIdBox.Text)
+            
+            if not gearId then
+                showNotification("Please enter a gear ID", true)
+                return
+            end
+            
+            local gearCount = 0
+            for _, player in pairs(Players:GetPlayers()) do
+                if player.Character and player:FindFirstChild("Backpack") then
+                    local success, errorMsg = pcall(function()
+                        local gear = game:GetService("InsertService"):LoadAsset(gearId)
+                        if gear and gear:GetChildren()[1] then
+                            local tool = gear:GetChildren()[1]
+                            if tool:IsA("Tool") then
+                                tool.Parent = player.Backpack
+                                gearCount = gearCount + 1
+                            end
+                        end
+                    end)
+                end
+            end
+            showNotification("Gave gear to " .. gearCount .. " players", false)
+        end)
+
+        -- Username input
+        createTextLabel("Input Username", frame)
+        local usernameBox = createTextBox("Enter username", frame)
+
+        -- Give gear button
+        createButton("Give Gear", frame, function()
+            local username = usernameBox.Text
+            local gearId = tonumber(gearIdBox.Text)
+            
+            if username == "" or not gearId then
+                showNotification("Please enter both username and gear ID", true)
+                return
+            end
+            
+            -- Find player by username
+            local targetPlayer = findPlayerByName(username)
+            
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            if not targetPlayer.Character then
+                showNotification("Player has no character", true)
+                return
+            end
+            
+            -- Create gear and give to player
+            local success, errorMsg = pcall(function()
+                local gear = game:GetService("InsertService"):LoadAsset(gearId)
+                if gear and gear:GetChildren()[1] then
+                    local tool = gear:GetChildren()[1]
+                    if tool:IsA("Tool") then
+                        tool.Parent = targetPlayer.Backpack
+                        showNotification("Gave gear to " .. targetPlayer.Name, false)
+                    else
+                        showNotification("Asset is not a tool/gear", true)
+                    end
+                else
+                    showNotification("Failed to load gear with ID: " .. gearId, true)
+                end
+            end)
+            
+            if not success then
+                showNotification("Error giving gear: " .. tostring(errorMsg), true)
+            end
+        end)
+    end
+}
+
+-- User Location Tab
+tabs["User Location"] = {
+    setup = function(frame)
+        createRainbowHeader("Teleport Controls", frame)
+
+        -- Bring All button
+        createButton("Bring All", frame, function()
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("You need a character to bring others", true)
+                return
+            end
+            
+            local myPosition = LocalPlayer.Character.HumanoidRootPart.Position
+            local broughtCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    -- Teleport to slightly different positions to avoid overlapping
+                    local offset = Vector3.new(math.random(-10, 10), 0, math.random(-10, 10))
+                    plr.Character.HumanoidRootPart.CFrame = CFrame.new(myPosition + offset)
+                    broughtCount = broughtCount + 1
+                end
+            end
+            showNotification("Brought " .. broughtCount .. " players", false)
+        end)
+
+        -- Goto Username section
+        createTextLabel("Goto Username", frame)
+        local gotoBox = createTextBox("Enter username to go to", frame)
+
+        createButton("Go To Player", frame, function()
+            local username = gotoBox.Text
+            if username == "" then
+                showNotification("Please enter a username", true)
+                return
+            end
+            
+            -- Find target player
+            local targetPlayer = findPlayerByName(username)
+            
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("Target player has no character", true)
+                return
+            end
+            
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("You need a character to teleport", true)
+                return
+            end
+            
+            -- Teleport to target player
+            LocalPlayer.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(5, 0, 0)
+            showNotification("Teleported to " .. targetPlayer.Name, false)
+        end)
+
+        -- Bring Username section
+        createTextLabel("Bring Username", frame)
+        local bringBox = createTextBox("Enter username to bring", frame)
+
+        createButton("Bring Player", frame, function()
+            local username = bringBox.Text
+            if username == "" then
+                showNotification("Please enter a username", true)
+                return
+            end
+            
+            -- Find target player
+            local targetPlayer = findPlayerByName(username)
+            
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("Target player has no character", true)
+                return
+            end
+            
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                showNotification("You need a character to bring others", true)
+                return
+            end
+            
+            -- Bring target player to you
+            targetPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(5, 0, 0)
+            showNotification("Brought " .. targetPlayer.Name .. " to you", false)
+        end)
+    end
+}
+
+-- ENHANCED TROLLING TAB WITH FIXED FLING FEATURES
+tabs["Trolling"] = {
+    setup = function(frame)
+        createRainbowHeader("Trolling", frame)
+
+        -- NEW FLING SECTION WITH TEXTBOX (FIXED)
+        createRainbowHeader("Fling Controls", frame)
+        
+        -- Fling Power Textbox (replacing the broken slider)
+        createTextLabel("Fling Power 1-100", frame)
+        local flingPowerBox = createTextBox("Enter fling power (1-100)", frame)
+        
+        createTextLabel("Fling User", frame)
+        local flingUserBox = createTextBox("Enter username to fling", frame)
+        
+        createButton("Fling User", frame, function()
+            local username = flingUserBox.Text
+            local powerText = flingPowerBox.Text
+            
+            if username == "" then
+                showNotification("Please enter a username to fling", true)
+                return
+            end
+            
+            if powerText == "" then
+                showNotification("Please enter fling power (1-100)", true)
+                return
+            end
+            
+            local power = tonumber(powerText)
+            if not power or power < 1 or power > 100 then
+                showNotification("Fling power must be between 1-100", true)
+                return
+            end
+            
+            local targetPlayer = findPlayerByName(username)
+            if not targetPlayer then
+                showNotification("Player not found: " .. username, true)
+                return
+            end
+            
+            if flingPlayer(targetPlayer, power) then
+                showNotification("Flung " .. targetPlayer.Name .. " with power " .. power, false)
+            else
+                showNotification("Failed to fling " .. targetPlayer.Name, true)
+            end
+        end)
+        
+        createButton("Fling Others", frame, function()
+            local powerText = flingPowerBox.Text
+            
+            if powerText == "" then
+                showNotification("Please enter fling power (1-100)", true)
+                return
+            end
+            
+            local power = tonumber(powerText)
+            if not power or power < 1 or power > 100 then
+                showNotification("Fling power must be between 1-100", true)
+                return
+            end
+            
+            local flingCount = 0
+            
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    if flingPlayer(plr, power) then
+                        flingCount = flingCount + 1
+                    end
+                end
+            end
+            
+            showNotification("Flung " .. flingCount .. " players with power " .. power, false)
+        end)
+
+        -- EXISTING TROLLING FEATURES
+        createRainbowHeader("General Trolling", frame)
+
+        createButton("Freeze Others", frame, function()
+            local frozenCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    plr.Character.HumanoidRootPart.Anchored = true
+                    frozenCount = frozenCount + 1
+                end
+            end
+            showNotification("Froze " .. frozenCount .. " players", false)
+        end)
+
+        createButton("Unfreeze Others", frame, function()
+            local unfrozenCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    plr.Character.HumanoidRootPart.Anchored = false
+                    unfrozenCount = unfrozenCount + 1
+                end
+            end
+            showNotification("Unfroze " .. unfrozenCount .. " players", false)
+        end)
+
+        -- Individual freeze controls
+        createTextLabel("Freeze Username", frame)
+        local freezeUserBox = createTextBox("Enter username", frame)
+        createButton("Freeze User", frame, function()
+            local targetPlayer = findPlayerByName(freezeUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. freezeUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                targetPlayer.Character.HumanoidRootPart.Anchored = true
+                showNotification("Froze " .. targetPlayer.Name, false)
+            end
+        end)
+        createButton("Unfreeze User", frame, function()
+            local targetPlayer = findPlayerByName(freezeUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. freezeUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                targetPlayer.Character.HumanoidRootPart.Anchored = false
+                showNotification("Unfroze " .. targetPlayer.Name, false)
+            end
+        end)
+
+        createButton("Explode Others", frame, function()
+            local explodedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    local explosion = Instance.new("Explosion")
+                    explosion.Position = plr.Character.HumanoidRootPart.Position
+                    explosion.BlastPressure = 100
+                    explosion.BlastRadius = 3
+                    explosion.Parent = Workspace
+                    explodedCount = explodedCount + 1
+                end
+            end
+            showNotification("Exploded " .. explodedCount .. " players", false)
+        end)
+
+        -- Individual explode controls
+        createTextLabel("Explode Username", frame)
+        local explodeUserBox = createTextBox("Enter username", frame)
+        createButton("Explode User", frame, function()
+            local targetPlayer = findPlayerByName(explodeUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. explodeUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local explosion = Instance.new("Explosion")
+                explosion.Position = targetPlayer.Character.HumanoidRootPart.Position
+                explosion.BlastPressure = 100
+                explosion.BlastRadius = 3
+                explosion.Parent = Workspace
+                showNotification("Exploded " .. targetPlayer.Name, false)
+            end
+        end)
+
+        createButton("Kick Others", frame, function()
+            local kickedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    plr:Kick("You have been kicked by an admin.")
+                    kickedCount = kickedCount + 1
+                end
+            end
+            showNotification("Kicked " .. kickedCount .. " players", false)
+        end)
+
+        -- Individual kick controls
+        createTextLabel("Kick Username", frame)
+        local kickUserBox = createTextBox("Enter username", frame)
+        createButton("Kick User", frame, function()
+            local targetPlayer = findPlayerByName(kickUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. kickUserBox.Text, true)
+                return
+            end
+            targetPlayer:Kick("You have been kicked by an admin.")
+            showNotification("Kicked " .. targetPlayer.Name, false)
+        end)
+
+        createButton("Kill Others", frame, function()
+            local killedCount = 0
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") then
+                    plr.Character.Humanoid.Health = 0
+                    killedCount = killedCount + 1
+                end
+            end
+            showNotification("Killed " .. killedCount .. " players", false)
+        end)
+
+        -- Individual kill controls
+        createTextLabel("Kill Username", frame)
+        local killUserBox = createTextBox("Enter username", frame)
+        createButton("Kill User", frame, function()
+            local targetPlayer = findPlayerByName(killUserBox.Text)
+            if not targetPlayer then
+                showNotification("Player not found: " .. killUserBox.Text, true)
+                return
+            end
+            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+                targetPlayer.Character.Humanoid.Health = 0
+                showNotification("Killed " .. targetPlayer.Name, false)
+            end
+        end)
+    end
+}
+
+-- Create tab buttons for all tabs (INCLUDING NEW BAN STUFF TAB)
+createTabBtn("Players")
+createTabBtn("Chat")
+createTabBtn("Ban Stuff")  -- NEW TAB
+createTabBtn("Skybox")
+createTabBtn("Music")
+createTabBtn("Particles")
+createTabBtn("Settings")
+createTabBtn("Spam")
+createTabBtn("Workspace")
+createTabBtn("Gears")
+createTabBtn("User Location")
+createTabBtn("Trolling")
+
+-- Variables for minimize functionality
+local isMinimized = false
+local originalSize = mainFrame.Size
+local minimizedSize = UDim2.new(0, 1000, 0, 40)
+
+-- Minimize button functionality
+minimizeBtn.MouseButton1Click:Connect(function()
+    if not isMinimized then
+        -- Minimize: hide tabs and content, keep only top bar
+        tabButtonsFrame.Visible = false
+        contentFrame.Visible = false
+        mainFrame.Size = minimizedSize
+        minimizeBtn.Text = "+"
+        isMinimized = true
+        showNotification("GUI minimized", false)
+    else
+        -- Restore: show tabs and content
+        tabButtonsFrame.Visible = true
+        contentFrame.Visible = true
+        mainFrame.Size = originalSize
+        minimizeBtn.Text = "-"
+        isMinimized = false
+        showNotification("GUI restored", false)
+    end
+end)
+
+-- Close button functionality
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- Initial tab selection
+switchTab("Players")
+
+-- Ensure only the local player sees the GUI
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+and exactly told you this
+
+"Hey I was just making a Roblox Lua GUI with you and it works off tabs and has server sided features but can you also add these features thanks.
+add a new tab called "leaderboard" and when you open it. it will have 1 button also make sure new buttons textboxes or tabs look like the rest but make this button in the top middle of the tab called "Check for Leaderstats" which goes to every player in workspace and checks for "LeaderStats" folder and if its found it will pop up a message in the same way the banned people list pops up with either "Leaderstats" found running leaderboard tab" for if its found and "No leaderstats found tab will stay hidden" which will pop up if no leaderstats folder is there (by the way if its a no the error message is red and if its a yes its green) if found in every player and if its a yes then it will remove the button and show the real leaderboard tab which will have 2 textboxes and 2 buttons the first textbox with the label "stat amount" is where you can input a number to have someones stats set to and the second textbox with the label "user to change stats of" is where you can put someone username of is in the server to set their stats when one of the buttons is pressed the first button will be called stat all which sets everyone leaderstat like cash as a example to whatever amount is in the "stat amount" textbox  and the second button will be called "stat user" where it will set whoevers name is in the "user to stat" textbox to what ever stat amount is in the "stat amount" textbox a example of this working is if the game im in has cash on the leaderboard i could put in my name for user to stat then 999 to stat amount and press stat user then it would set my cash to 99 as a example.
+next feature is in the players tab so first make a new section header that looks like the rest in the player tab which will say "limb coloring" which will have 2 textboxes and 2 buttons and the first textbox will have the label "RGB code for limbs" where you can put a rgb code and the second textbox will have the label "user to color" where you can input a username from someone in the server to have colored and the first button will be called "color limbs others" which sets everyones limbs except mine to whatever RGB code is in the "RGB code for limb coloring" textbox and the second button will be called "limb color user" which will sets every limb of whoevers name is in the user to color textbox to whatever rgb code is in the rgb code for limbs textbox
+next in the main menu of the gui to go back from settings or credit back to the main menu there is a button that has a back arrow on it but replace that back arrow with just this "<-"
+next add a close button to the top right of the main menu to fully destroy the whole gui and make sure it looks like the close button from the main GUI
+next in the gear tab add a new section header just like the ones in the player tab that says "gear spam" which will have 1 textbox and 3 buttons and in the textbox with the label "user to gear spam" you can put a username of someone in the server to gear spam and the next button will be called "gear spam others" which will go to players then go to every player but me and go to their backpacks then insert object tool 100 times to everyone but me and the next button will be called "gear spam user" which will do the same thing but only to whoever has their name in the user to gear spam textbox and the last button will be called "gear clear others" which goes to everyones backpack but mine and clear everything from it.
+thanks for making all this now please make sure it all works server sided so it for real affects everyone
+and also in the trolling tab add 3 new buttons under the general trolling section header the first one will be called "explode others" which just kills everyone but me with a explosion next add "unfreeze others" which just un freezes them from the freeze others button also for the last button add a button called "kill others" which just kills everyone but me
+next in the particles tab just copy n paste the fire stuff like fire particle all stop fir particle all and all the fire username stuff and just add 2 new ones which do the same thing but for sparkle particles and smoke particles which will be under a section header for sparkles under sparkles and smoke under smoke section header
+also when a message appears like showing current banned players or error messages or any message that works similar to the error code message just for a different purpose make it so the text is the opposite color of the background of the text just so the text is more visible also in the main menu of the GUI at the middle top and bottom have it say "USER'S SS" in the same color and font as the title in the main GUI last but not least in the chat tab add a new section header which will say "server message" which will have 2 textboxs and a button and the textbox lets you put anything in like a symbol number letter word phrase anything and it will have the label "input server message" and the other textbox is where you can say who sent it so you can type in a name and make it look like they sent the message and this textbox will have the label "sender of message" and a button which will be called "server message" which when pressed shows everyone the message from the input server message textbox so it will pop up a new gui on everyone screen around a fifth of the screen in size box with same color as my gui and rounded edges and will appear in the dead center with the name of sender from the textbox like "Sent By (name in name of send textbox)" in smaller but this readable text at the middle top and bottom in the same color as the GUI title and the text color will be white just 255, 255, 255 after floating down from the top with a animation then after 5 seconds will rise back up to the top off screen and delete the message gui "
+
+but you gave me this
 
 -- Roblox MultiTab GUI Script - Enhanced Version with Main Menu - PART 1
 -- Client-sided GUI + server effects where needed
@@ -1799,2499 +3805,5 @@ createTabBtn("User Location")
 -- Start with main menu visible
 mainMenuFrame.Visible = true
 
-and i asked you to
-
-Hey I was just making a Roblox Lua GUI with you and it works off tabs and has server sided features but can you also add these features thanks.
-1.add a new tab called "leaderboard" and when you open it. it will have 1 button also make sure new buttons textboxes or tabs look like the rest but make this button in the top middle of the tab called "Check for Leaderstats" which goes to every player in workspace and checks for leaderstats and if it works it will pop up a message in the same way the banned people list pops up with either "Leaderstats" found running leaderboard tab" for if its found and "No leaderstats found tab will stay hidden" which will pop up if no leaderstat (by the way if its a no the error message is red and if its a yes its green) if found in every player and if its a yes then it will remove the button and show the real leaderboard tab which will have 2 textboxes and 2 buttons the first textbox with the label "stat amount" is where you can input a number to have someones stats set to and the second textbox with the label "user to change stats of" is where you can put someone username of is in the server to set their stats when one of the buttons is pressed the first button will be called stat all which sets everyone leaderstat like cash as a example to whatever amount is in the "stat amount" textbox  and the second button will be called "stat user" where it will set whoevers name is in the "user to stat" textbox to what ever stat amount is in the "stat amount" textbox a example of this working is if the game im in has cash on the leaderboard i could put in my name for user to stat then 999 to stat amount and press stat user then it would set my cash to 99 as a example.
-next feature is in the players tab so first make a new section header that looks like the rest in the player tab which will say "limb coloring" which will have 2 textboxes and 2 buttons and the first textbox will have the label "RGB code for limbs" where you can put a rgb code and the second textbox will have the label "user to color" where you can input a username from someone in the server to have colored and the first button will be called "color limbs others" which sets everyones limbs except mine to wheatever RGB code is in the "RGB code for limb coloring" textbox and the second button will be called "limb color user" which will sets every limb of whoevers name is in the user to color textbox to whatever rgb code is in the rgb code for limbs textbox
-next in the main menu of the gui to go back from settings or credit back to the main menu there is a button that has a back arrow on it but replace that back arrow with just this "<-"
-next add a close button to the top right of the main menu to fully destroy the whole gui and make sure it looks like the close button from the main GUI
-next in the gear tab add a new section header just like the ones in the player tab that says "gear spam" which will have 1 textbox and 3 buttons and in the textbox with the label "user to gear spam" you can put a username of someone in the server to gear spam and the next button will be called "gear spam others" which will go to players then go to every player but me and go to their backpacks then insert object tool 100 times to everyone but me and the next button will be called "gear spam user" which will do the same thing but only to whoever has their name in the user to gear spam textbox and the last button will be called "gear clear others" which goes to everyones backpack but mine and clear everything from it.
-thanks for making all this now please make sure it all works server sided so it for real affects everyone
-and also in the trolling tab add 3 new buttons under the general trolling section header the first one will be called "explode others" which just kills everyone but me with a explosion next add "unfreeze others" which just un freezes them from the freeze others button also for the last button add a button called "kill others" which just kills everyone but me
-next in the particles tab just copy n paste the fire stuff like fire particle all stop fir particle all and all the fire username stuff and just add 2 new ones which do the same thing but for sparkle particles and smoke particles which will be under a section header for sparkles under sparkles and smoke under smoke section header
-also when a message appears like showing current banned players or error messages or any message that works similar to the error code message just for a different purpose make it so the text is the opposite color of the background of the text just so the text is more visible also in the main menu of the GUI at the middle top and bottom have it say "USER'S SS" in the same color and font as the title in the main GUI
-also in the gear tab add 2 new buttons and 1 textbox and 1 section header to have the new buttons and textboxes and the section header will say "sledge hammer (unanchors)" and the first textbox lets you chose who in the server gets the sledge hammer and will have the label "sledge hammer user" and the first button will be called "sledge hammer all" which give everone a sledge hammer and the second button will be called sledge hammer user which give it to only whoever has their name in the sledge hammer user textbox and the sledge hammer should look like this https://tr.rbxcdn.com/180DAY-993cc1828aa106ea583955772ab50b92/420/420/Hat/Webp/noFilter
-and will have a swing animation when you left click and whatever you hit with the sledge hammer gets unanchored but only what you hit nothing else
-last but not least in the chat tab add a new section header which will say "server message" which will have 2 textboxs and a button and the textbox lets you put anything in like a symbol number letter word phrase anything and it will have the label "input server message" and the other textbox is where you can say who sent it so you can type in a name and make it look like they sent the message and this textbox will have the label "sender of message" and a button which will be called "server message" which when pressed shows everyone the message from the input server message textbox so it will pop up a new gui on everyone screen around a fifth of the screen in size box with same color as my gui and rounded edges and will appear in the dead center with the name of sender from the textbox like "Sent By (name in name of send textbox)" in smaller but this readable text at the middle top and bottom in the same color as the GUI title and the text color will be white just 255, 255, 255 after floating down from the top with a animation then after 5 seconds will rise back up to the top off screen and delete the message gui 
-
-and you sent me this
-
--- Roblox MultiTab GUI Script - Enhanced Version with All New Features - PART 1
--- Client-sided GUI + server effects where needed
-
-local Players = game:GetService("Players")
-local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
-local TextChatService = game:GetService("TextChatService")
-local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LocalPlayer = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
-local InsertService = game:GetService("InsertService")
-
--- Global variables for effect control
-local rainbowChatConnection = nil
-local discoSkyConnection = nil
-local bannedPlayers = {} -- Store banned players data
-
--- Notification tracking for positioning
-local activeNotifications = {}
-
--- Rainbow color cycling helper
-local function RainbowColor(step)
-    local frequency = 0.3
-    local r = math.floor(math.sin(frequency * step + 0) * 127 + 128)
-    local g = math.floor(math.sin(frequency * step + 2) * 127 + 128)
-    local b = math.floor(math.sin(frequency * step + 4) * 127 + 128)
-    return Color3.fromRGB(r, g, b)
-end
-
--- Helper function to find player by username
-local function findPlayerByName(name)
-    for _, player in pairs(Players:GetPlayers()) do
-        if string.lower(player.Name) == string.lower(name) or string.lower(player.DisplayName) == string.lower(name) then
-            return player
-        end
-    end
-    return nil
-end
-
--- Create main ScreenGui
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "MultiTabGui"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
--- Enhanced notification system with proper centering and stacking
-local function showNotification(message, isError, isSuccess)
-    local notificationFrame = Instance.new("Frame")
-    notificationFrame.Name = "NotificationFrame"
-    notificationFrame.Size = UDim2.new(0, 400, 0, 50)
-    
-    -- Calculate position based on existing notifications
-    local yOffset = 20 + (#activeNotifications * 60) -- Stack notifications
-    
-    -- Center horizontally (1920x1080 screen)
-    notificationFrame.Position = UDim2.new(0.5, -200, 0, yOffset)
-    
-    -- Set color based on notification type with opposite text color for better visibility
-    local backgroundColor
-    local textColor
-    if isSuccess then
-        backgroundColor = Color3.fromRGB(30, 220, 30) -- Green for success/bans
-        textColor = Color3.fromRGB(225, 35, 225) -- Opposite color for visibility
-    elseif isError then
-        backgroundColor = Color3.fromRGB(220, 30, 30) -- Red for errors
-        textColor = Color3.fromRGB(35, 225, 225) -- Opposite color for visibility
-    else
-        backgroundColor = Color3.fromRGB(30, 130, 220) -- Blue for info
-        textColor = Color3.fromRGB(225, 125, 35) -- Opposite color for visibility
-    end
-    
-    notificationFrame.BackgroundColor3 = backgroundColor
-    notificationFrame.BorderSizePixel = 0
-    notificationFrame.Parent = screenGui
-    notificationFrame.AnchorPoint = Vector2.new(0.5, 0)
-    notificationFrame.ZIndex = 1000
-    notificationFrame.BackgroundTransparency = 0.3
-
-    local notificationCorner = Instance.new("UICorner")
-    notificationCorner.CornerRadius = UDim.new(0, 12)
-    notificationCorner.Parent = notificationFrame
-
-    local notificationText = Instance.new("TextLabel")
-    notificationText.Size = UDim2.new(1, -20, 1, 0)
-    notificationText.Position = UDim2.new(0, 10, 0, 0)
-    notificationText.BackgroundTransparency = 1
-    notificationText.Text = message
-    notificationText.TextColor3 = textColor
-    notificationText.Font = Enum.Font.GothamBold
-    
-    -- Adjust text size for ban notifications (50% smaller)
-    if isSuccess then
-        notificationText.TextSize = 12
-        notificationFrame.Size = UDim2.new(0, 400, 0, 35)
-    else
-        notificationText.TextSize = 18
-    end
-    
-    notificationText.TextScaled = true
-    notificationText.TextTransparency = 0
-    notificationText.Parent = notificationFrame
-
-    -- Add to active notifications list
-    table.insert(activeNotifications, notificationFrame)
-
-    -- Slide in animation
-    local slideInTween = TweenService:Create(
-        notificationFrame,
-        TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-        {BackgroundTransparency = 0.1}
-    )
-    slideInTween:Play()
-
-    -- Wait and fade out
-    spawn(function()
-        wait(3)
-        local fadeOutTween = TweenService:Create(
-            notificationFrame,
-            TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            {BackgroundTransparency = 1}
-        )
-        local textFadeTween = TweenService:Create(
-            notificationText,
-            TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            {TextTransparency = 1}
-        )
-        
-        fadeOutTween:Play()
-        textFadeTween:Play()
-        
-        fadeOutTween.Completed:Connect(function()
-            -- Remove from active notifications
-            for i, notification in ipairs(activeNotifications) do
-                if notification == notificationFrame then
-                    table.remove(activeNotifications, i)
-                    break
-                end
-            end
-            
-            -- Reposition remaining notifications
-            for i, notification in ipairs(activeNotifications) do
-                local newYOffset = 20 + ((i-1) * 60)
-                local repositionTween = TweenService:Create(
-                    notification,
-                    TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                    {Position = UDim2.new(0.5, -200, 0, newYOffset)}
-                )
-                repositionTween:Play()
-            end
-            
-            notificationFrame:Destroy()
-        end)
-    end)
-end
-
--- Auto-resize text elements
-local function autoResizeTextElement(element, minWidth, maxWidth)
-    minWidth = minWidth or 160
-    maxWidth = maxWidth or 300
-    
-    local textBounds = element.TextBounds
-    local newWidth = math.max(minWidth, math.min(maxWidth, textBounds.X + 20))
-    element.Size = UDim2.new(0, newWidth, element.Size.Y.Scale, element.Size.Y.Offset)
-end
-
--- Server message GUI function
-local function createServerMessage(messageText, senderName)
-    for _, player in pairs(Players:GetPlayers()) do
-        if player:FindFirstChild("PlayerGui") then
-            spawn(function()
-                local messageGui = Instance.new("ScreenGui")
-                messageGui.Name = "ServerMessageGui"
-                messageGui.Parent = player.PlayerGui
-                messageGui.ResetOnSpawn = false
-                messageGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-                local messageFrame = Instance.new("Frame")
-                messageFrame.Size = UDim2.new(0.2, 0, 0.2, 0) -- One fifth of screen size
-                messageFrame.Position = UDim2.new(0.5, 0, -0.2, 0) -- Start above screen
-                messageFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-                messageFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50) -- Same as GUI color
-                messageFrame.BorderSizePixel = 0
-                messageFrame.Parent = messageGui
-                messageFrame.ZIndex = 10000
-
-                local messageCorner = Instance.new("UICorner")
-                messageCorner.CornerRadius = UDim.new(0, 15)
-                messageCorner.Parent = messageFrame
-
-                -- Sender label at top
-                local senderLabel = Instance.new("TextLabel")
-                senderLabel.Size = UDim2.new(1, -20, 0, 30)
-                senderLabel.Position = UDim2.new(0, 10, 0, 10)
-                senderLabel.BackgroundTransparency = 1
-                senderLabel.Text = "Sent By " .. senderName
-                senderLabel.TextColor3 = Color3.new(1, 1, 1) -- Same as GUI title color
-                senderLabel.Font = Enum.Font.GothamBold
-                senderLabel.TextSize = 14
-                senderLabel.TextXAlignment = Enum.TextXAlignment.Center
-                senderLabel.Parent = messageFrame
-
-                -- Main message text
-                local messageLabel = Instance.new("TextLabel")
-                messageLabel.Size = UDim2.new(1, -20, 1, -60)
-                messageLabel.Position = UDim2.new(0, 10, 0, 40)
-                messageLabel.BackgroundTransparency = 1
-                messageLabel.Text = messageText
-                messageLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
-                messageLabel.Font = Enum.Font.GothamBold
-                messageLabel.TextSize = 18
-                messageLabel.TextScaled = true
-                messageLabel.TextXAlignment = Enum.TextXAlignment.Center
-                messageLabel.TextYAlignment = Enum.TextYAlignment.Center
-                messageLabel.Parent = messageFrame
-
-                -- Sender label at bottom
-                local senderLabelBottom = Instance.new("TextLabel")
-                senderLabelBottom.Size = UDim2.new(1, -20, 0, 30)
-                senderLabelBottom.Position = UDim2.new(0, 10, 1, -40)
-                senderLabelBottom.BackgroundTransparency = 1
-                senderLabelBottom.Text = "Sent By " .. senderName
-                senderLabelBottom.TextColor3 = Color3.new(1, 1, 1) -- Same as GUI title color
-                senderLabelBottom.Font = Enum.Font.GothamBold
-                senderLabelBottom.TextSize = 14
-                senderLabelBottom.TextXAlignment = Enum.TextXAlignment.Center
-                senderLabelBottom.Parent = messageFrame
-
-                -- Animate down from top
-                local slideDownTween = TweenService:Create(
-                    messageFrame,
-                    TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-                    {Position = UDim2.new(0.5, 0, 0.5, 0)} -- Center of screen
-                )
-                slideDownTween:Play()
-
-                -- Wait 5 seconds then slide up and delete
-                wait(5)
-                local slideUpTween = TweenService:Create(
-                    messageFrame,
-                    TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.In),
-                    {Position = UDim2.new(0.5, 0, -0.2, 0)} -- Back above screen
-                )
-                slideUpTween:Play()
-
-                slideUpTween.Completed:Connect(function()
-                    messageGui:Destroy()
-                end)
-            end)
-        end
-    end
-end
-
--- MAIN MENU SYSTEM
-local mainMenuFrame = Instance.new("Frame")
-mainMenuFrame.Name = "MainMenuFrame"
-mainMenuFrame.Size = UDim2.new(0, 600, 0, 400)
-mainMenuFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-mainMenuFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
-mainMenuFrame.BorderSizePixel = 0
-mainMenuFrame.Parent = screenGui
-mainMenuFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-mainMenuFrame.Active = true
-mainMenuFrame.Draggable = true
-
-local mainMenuCorner = Instance.new("UICorner")
-mainMenuCorner.CornerRadius = UDim.new(0, 15)
-mainMenuCorner.Parent = mainMenuFrame
-
--- Main menu title at top
-local mainMenuTopTitle = Instance.new("TextLabel")
-mainMenuTopTitle.Name = "MainMenuTopTitle"
-mainMenuTopTitle.Size = UDim2.new(1, 0, 0, 40)
-mainMenuTopTitle.Position = UDim2.new(0, 0, 0, 10)
-mainMenuTopTitle.BackgroundTransparency = 1
-mainMenuTopTitle.Text = "USER'S SS"
-mainMenuTopTitle.Font = Enum.Font.GothamBold
-mainMenuTopTitle.TextSize = 24
-mainMenuTopTitle.TextColor3 = Color3.new(1, 1, 1)
-mainMenuTopTitle.TextXAlignment = Enum.TextXAlignment.Center
-mainMenuTopTitle.Parent = mainMenuFrame
-
--- Main menu title at bottom
-local mainMenuBottomTitle = Instance.new("TextLabel")
-mainMenuBottomTitle.Name = "MainMenuBottomTitle"
-mainMenuBottomTitle.Size = UDim2.new(1, 0, 0, 40)
-mainMenuBottomTitle.Position = UDim2.new(0, 0, 1, -50)
-mainMenuBottomTitle.BackgroundTransparency = 1
-mainMenuBottomTitle.Text = "USER'S SS"
-mainMenuBottomTitle.Font = Enum.Font.GothamBold
-mainMenuBottomTitle.TextSize = 24
-mainMenuBottomTitle.TextColor3 = Color3.new(1, 1, 1)
-mainMenuBottomTitle.TextXAlignment = Enum.TextXAlignment.Center
-mainMenuBottomTitle.Parent = mainMenuFrame
-
--- Main menu close button
-local mainMenuCloseBtn = Instance.new("TextButton")
-mainMenuCloseBtn.Name = "MainMenuCloseBtn"
-mainMenuCloseBtn.Size = UDim2.new(0, 40, 0, 40)
-mainMenuCloseBtn.Position = UDim2.new(1, -50, 0, 10)
-mainMenuCloseBtn.BackgroundColor3 = Color3.fromRGB(220, 30, 30)
-mainMenuCloseBtn.Text = "X"
-mainMenuCloseBtn.Font = Enum.Font.GothamBold
-mainMenuCloseBtn.TextSize = 24
-mainMenuCloseBtn.TextColor3 = Color3.new(1, 1, 1)
-mainMenuCloseBtn.Parent = mainMenuFrame
-
-local mainMenuCloseCorner = Instance.new("UICorner")
-mainMenuCloseCorner.CornerRadius = UDim.new(0, 8)
-mainMenuCloseCorner.Parent = mainMenuCloseBtn
-
--- Main menu close functionality
-mainMenuCloseBtn.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
-end)
-
--- Main menu layout
-local mainMenuLayout = Instance.new("UIListLayout")
-mainMenuLayout.SortOrder = Enum.SortOrder.LayoutOrder
-mainMenuLayout.Padding = UDim.new(0, 20)
-mainMenuLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-mainMenuLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-mainMenuLayout.Parent = mainMenuFrame
-
--- Helper function to create main menu buttons
-local function createMainMenuButton(text, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 200, 0, 60)
-    btn.BackgroundColor3 = Color3.fromRGB(60, 40, 120)
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 24
-    btn.Text = text
-    btn.AutoButtonColor = true
-    btn.Parent = mainMenuFrame
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 15)
-    corner.Parent = btn
-
-    btn.MouseButton1Click:Connect(callback)
-    return btn
-end
-
--- Settings Frame (moved from main GUI)
-local settingsFrame = Instance.new("Frame")
-settingsFrame.Name = "SettingsFrame"
-settingsFrame.Size = UDim2.new(0, 600, 0, 400)
-settingsFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-settingsFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
-settingsFrame.BorderSizePixel = 0
-settingsFrame.Parent = screenGui
-settingsFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-settingsFrame.Active = true
-settingsFrame.Draggable = true
-settingsFrame.Visible = false
-
-local settingsCorner = Instance.new("UICorner")
-settingsCorner.CornerRadius = UDim.new(0, 15)
-settingsCorner.Parent = settingsFrame
-
--- Settings content
-local settingsContent = Instance.new("ScrollingFrame")
-settingsContent.Name = "SettingsContent"
-settingsContent.Size = UDim2.new(1, -20, 1, -60)
-settingsContent.Position = UDim2.new(0, 10, 0, 50)
-settingsContent.BackgroundTransparency = 1
-settingsContent.BorderSizePixel = 0
-settingsContent.CanvasSize = UDim2.new(0, 0, 3, 0)
-settingsContent.ScrollBarThickness = 8
-settingsContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
-settingsContent.Parent = settingsFrame
-
-local settingsLayout = Instance.new("UIListLayout")
-settingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-settingsLayout.Padding = UDim.new(0, 10)
-settingsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-settingsLayout.Parent = settingsContent
-
--- Credits Frame
-local creditsFrame = Instance.new("Frame")
-creditsFrame.Name = "CreditsFrame"
-creditsFrame.Size = UDim2.new(0, 600, 0, 400)
-creditsFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-creditsFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
-creditsFrame.BorderSizePixel = 0
-creditsFrame.Parent = screenGui
-creditsFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-creditsFrame.Active = true
-creditsFrame.Draggable = true
-creditsFrame.Visible = false
-
-local creditsCorner = Instance.new("UICorner")
-creditsCorner.CornerRadius = UDim.new(0, 15)
-creditsCorner.Parent = creditsFrame
-
--- Credits content
-local creditsText = Instance.new("TextLabel")
-creditsText.Size = UDim2.new(1, -40, 1, -100)
-creditsText.Position = UDim2.new(0, 20, 0, 70)
-creditsText.BackgroundTransparency = 1
-creditsText.Text = "Roblox Username: HCPDUSER\nDiscord Username: idkmod12341"
-creditsText.TextColor3 = Color3.new(1, 1, 1)
-creditsText.Font = Enum.Font.GothamBold
-creditsText.TextSize = 28
-creditsText.TextXAlignment = Enum.TextXAlignment.Center
-creditsText.TextYAlignment = Enum.TextYAlignment.Center
-creditsText.Parent = creditsFrame
-
--- Helper function to create back buttons with "<-" arrow
-local function createBackButton(parent, callback)
-    local backBtn = Instance.new("TextButton")
-    backBtn.Size = UDim2.new(0, 60, 0, 40)
-    backBtn.Position = UDim2.new(0, 10, 0, 10)
-    backBtn.BackgroundColor3 = Color3.fromRGB(60, 40, 120)
-    backBtn.TextColor3 = Color3.new(1, 1, 1)
-    backBtn.Font = Enum.Font.GothamBold
-    backBtn.TextSize = 20
-    backBtn.Text = "<-"
-    backBtn.Parent = parent
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = backBtn
-
-    backBtn.MouseButton1Click:Connect(callback)
-    return backBtn
-end
-
--- Back buttons for settings and credits
-createBackButton(settingsFrame, function()
-    settingsFrame.Visible = false
-    mainMenuFrame.Visible = true
-end)
-
-createBackButton(creditsFrame, function()
-    creditsFrame.Visible = false
-    mainMenuFrame.Visible = true
-end)
-
--- Main Frame (initially hidden)
-local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 1000, 0, 420)
-mainFrame.Position = UDim2.new(0.5, -500, 0.5, -210)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = screenGui
-mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.Visible = false
-
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 15)
-mainCorner.Parent = mainFrame
-
--- Top bar (title + controls)
-local topBar = Instance.new("Frame")
-topBar.Name = "TopBar"
-topBar.Size = UDim2.new(1, 0, 0, 40)
-topBar.BackgroundColor3 = Color3.fromRGB(15, 15, 35)
-topBar.Parent = mainFrame
-
-local topBarCorner = Instance.new("UICorner")
-topBarCorner.CornerRadius = UDim.new(0, 15)
-topBarCorner.Parent = topBar
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Name = "TitleLabel"
-titleLabel.Size = UDim2.new(0, 200, 1, 0)
-titleLabel.Position = UDim2.new(0, 10, 0, 0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "USER'S SS"
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextSize = 22
-titleLabel.TextColor3 = Color3.new(1, 1, 1)
-titleLabel.Parent = topBar
-
--- Minimize button
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Name = "MinimizeBtn"
-minimizeBtn.Size = UDim2.new(0, 40, 1, 0)
-minimizeBtn.Position = UDim2.new(1, -80, 0, 0)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
-minimizeBtn.Text = "-"
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.TextSize = 28
-minimizeBtn.TextColor3 = Color3.new(1, 1, 1)
-minimizeBtn.Parent = topBar
-
-local minCorner = Instance.new("UICorner")
-minCorner.CornerRadius = UDim.new(0, 8)
-minCorner.Parent = minimizeBtn
-
--- Close button
-local closeBtn = Instance.new("TextButton")
-closeBtn.Name = "CloseBtn"
-closeBtn.Size = UDim2.new(0, 40, 1, 0)
-closeBtn.Position = UDim2.new(1, -40, 0, 0)
-closeBtn.BackgroundColor3 = Color3.fromRGB(220, 30, 30)
-closeBtn.Text = "X"
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 24
-closeBtn.TextColor3 = Color3.new(1, 1, 1)
-closeBtn.Parent = topBar
-
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 8)
-closeCorner.Parent = closeBtn
-
--- Tab buttons container (now scrollable)
-local tabButtonsFrame = Instance.new("ScrollingFrame")
-tabButtonsFrame.Name = "TabButtons"
-tabButtonsFrame.Size = UDim2.new(1, 0, 0, 40)
-tabButtonsFrame.Position = UDim2.new(0, 0, 0, 40)
-tabButtonsFrame.BackgroundTransparency = 1
-tabButtonsFrame.BorderSizePixel = 0
-tabButtonsFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-tabButtonsFrame.AutomaticCanvasSize = Enum.AutomaticSize.X
-tabButtonsFrame.ScrollBarThickness = 0
-tabButtonsFrame.ScrollingDirection = Enum.ScrollingDirection.X
-tabButtonsFrame.Parent = mainFrame
-
-local tabLayout = Instance.new("UIListLayout")
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-tabLayout.Padding = UDim.new(0, 5)
-tabLayout.Parent = tabButtonsFrame
-
--- Content frame for tabs
-local contentFrame = Instance.new("ScrollingFrame")
-contentFrame.Name = "ContentFrame"
-contentFrame.Size = UDim2.new(1, 0, 1, -80)
-contentFrame.Position = UDim2.new(0, 0, 0, 80)
-contentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
-contentFrame.BorderSizePixel = 0
-contentFrame.CanvasSize = UDim2.new(0, 0, 5, 0)
-contentFrame.ScrollBarThickness = 8
-contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-contentFrame.Parent = mainFrame
-
-local contentCorner = Instance.new("UICorner")
-contentCorner.CornerRadius = UDim.new(0, 12)
-contentCorner.Parent = contentFrame
-
-local contentLayout = Instance.new("UIListLayout")
-contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-contentLayout.Padding = UDim.new(0, 8)
-contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-contentLayout.Parent = contentFrame
-
--- Helper function to create buttons with auto-resize
-local function createButton(text, parent, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 160, 0, 35)
-    btn.BackgroundColor3 = Color3.fromRGB(60, 40, 120)
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 18
-    btn.Text = text
-    btn.AutoButtonColor = true
-    btn.Parent = parent
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = btn
-
-    -- Auto-resize button based on text
-    autoResizeTextElement(btn, 160, 400)
-
-    btn.MouseButton1Click:Connect(callback)
-    return btn
-end
-
--- Helper function to create textboxes with rounded edges and increased size for RGB inputs
-local function createTextBox(placeholder, parent, size, isRGBInput)
-    if isRGBInput then
-        size = UDim2.new(0, 350, 0, 30) -- Increased width for RGB inputs
-    else
-        size = size or UDim2.new(0, 200, 0, 30)
-    end
-    
-    local textbox = Instance.new("TextBox")
-    textbox.Size = size
-    textbox.PlaceholderText = placeholder
-    textbox.Text = ""
-    textbox.ClearTextOnFocus = false
-    textbox.TextColor3 = Color3.new(1, 1, 1)
-    textbox.BackgroundColor3 = Color3.fromRGB(40, 40, 70)
-    textbox.Font = Enum.Font.Gotham
-    textbox.TextSize = 18
-    textbox.Parent = parent
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = textbox
-
-    -- Auto-resize textbox based on text (only if not RGB input)
-    if not isRGBInput then
-        textbox:GetPropertyChangedSignal("Text"):Connect(function()
-            if textbox.Text ~= "" then
-                autoResizeTextElement(textbox, 200, 400)
-            end
-        end)
-    end
-
-    return textbox
-end
-
--- Helper function to create rainbow glowing headers
-local function createRainbowHeader(text, parent)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 30)
-    label.BackgroundTransparency = 1
-    label.Font = Enum.Font.GothamBlack
-    label.TextSize = 24
-    label.Text = text
-    label.TextColor3 = Color3.new(1, 1, 1)
-    label.TextStrokeTransparency = 0.6
-    label.Parent = parent
-
-    local step = 0
-    RunService.RenderStepped:Connect(function()
-        step = step + 0.02
-        label.TextColor3 = RainbowColor(step)
-    end)
-    return label
-end
-
--- Helper function to create text labels
-local function createTextLabel(text, parent)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 25)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.new(1, 1, 1)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 18
-    label.Parent = parent
-    return label
-end
-
--- Ban system helper functions
-local function banPlayer(player, minutes, hours, days)
-    local totalMinutes = minutes + (hours * 60) + (days * 1440)
-    local banEndTime = tick() + (totalMinutes * 60)
-    
-    bannedPlayers[player.UserId] = {
-        name = player.Name,
-        banEndTime = banEndTime,
-        totalTime = totalMinutes
-    }
-    
-    player:Kick("You have been banned for " .. totalMinutes .. " minutes.")
-    return totalMinutes
-end
-
-local function checkBanStatus(player)
-    local banData = bannedPlayers[player.UserId]
-    if banData and tick() < banData.banEndTime then
-        local timeLeft = math.ceil((banData.banEndTime - tick()) / 60)
-        player:Kick("You are still banned. Time remaining: " .. timeLeft .. " minutes.")
-        return true
-    elseif banData and tick() >= banData.banEndTime then
-        bannedPlayers[player.UserId] = nil -- Remove expired ban
-    end
-    return false
-end
-
--- Monitor players joining to check bans
-Players.PlayerAdded:Connect(function(player)
-    checkBanStatus(player)
-end)
-
--- UPDATED Fling helper function with proper power scaling
-local function flingPlayer(player, power)
-    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-        local humanoidRootPart = player.Character.HumanoidRootPart
-        
-        -- Scale power properly:
-        -- 1 = minimal (1 stud movement)
-        -- 25 = light (10 studs, stays grounded)
-        -- 50 = normal (20 studs, good ragdoll)
-        -- 75 = strong (almost off map)
-        -- 100 = maximum (off the map)
-        
-        local scaledPower
-        if power <= 1 then
-            scaledPower = 5 -- Very minimal force
-        elseif power <= 25 then
-            scaledPower = power * 2 -- Light scaling
-        elseif power <= 50 then
-            scaledPower = power * 4 -- Normal scaling
-        elseif power <= 75 then
-            scaledPower = power * 8 -- Strong scaling
-        else
-            scaledPower = power * 15 -- Maximum scaling
-        end
-        
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bodyVelocity.Velocity = Vector3.new(
-            math.random(-scaledPower, scaledPower),
-            math.random(scaledPower/2, scaledPower),
-            math.random(-scaledPower, scaledPower)
-        )
-        bodyVelocity.Parent = humanoidRootPart
-        
-        -- Remove the velocity after a short time
-        game:GetService("Debris"):AddItem(bodyVelocity, 0.5)
-        return true
-    end
-    return false
-end
-
--- UPDATED Force chat message helper function (REMOVED BILLBOARD GUI)
-local function forceChatMessage(player, message)
-    if player.Character and player.Character:FindFirstChild("Head") then
-        -- Only try to send actual chat message (realistic looking one)
-        pcall(function()
-            if game:GetService("Chat") then
-                game:GetService("Chat"):Chat(player.Character.Head, message)
-            end
-        end)
-        
-        return true
-    end
-    return false
-end
-
--- Helper function to check for leaderstats in all players
-local function checkForLeaderstats()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player:FindFirstChild("leaderstats") then
-            return true
-        end
-    end
-    return false
-end
-
--- Helper function to set limb colors
-local function setLimbColor(player, rgbColor)
-    if player.Character then
-        for _, part in pairs(player.Character:GetChildren()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                part.Color = rgbColor
-            end
-        end
-        return true
-    end
-    return false
-end
-
--- Helper function to create sledge hammer tool
-local function createSledgeHammer()
-    local tool = Instance.new("Tool")
-    tool.Name = "Sledge Hammer"
-    tool.RequiresHandle = true
-    
-    local handle = Instance.new("Part")
-    handle.Name = "Handle"
-    handle.Size = Vector3.new(1, 4, 1)
-    handle.Color = Color3.fromRGB(139, 69, 19) -- Brown color
-    handle.Material = Enum.Material.Wood
-    handle.Parent = tool
-    
-    -- Add mesh for sledgehammer appearance
-    local mesh = Instance.new("SpecialMesh")
-    mesh.MeshType = Enum.MeshType.FileMesh
-    mesh.MeshId = "rbxasset://fonts/hammer.mesh"
-    mesh.TextureId = "rbxasset://textures/face.png"
-    mesh.Scale = Vector3.new(2, 2, 2)
-    mesh.Parent = handle
-    
-    -- Swing animation and unanchoring functionality
-    local function onActivated()
-        local player = tool.Parent.Parent
-        if player and player:IsA("Player") and player.Character then
-            local humanoid = player.Character:FindFirstChild("Humanoid")
-            if humanoid then
-                -- Play swing animation
-                local swingAnim = Instance.new("Animation")
-                swingAnim.AnimationId = "rbxassetid://11365563255" -- Basic swing animation
-                local track = humanoid:LoadAnimation(swingAnim)
-                track:Play()
-                
-                -- Detect what the hammer hits
-                local connection
-                connection = handle.Touched:Connect(function(hit)
-                    if hit.Parent ~= player.Character and hit:IsA("BasePart") then
-                        hit.Anchored = false -- Unanchor the hit part
-                        connection:Disconnect()
-                    end
-                end)
-                
-                -- Disconnect after 1 second to prevent spam
-                game:GetService("Debris"):AddItem(connection, 1)
-            end
-        end
-    end
-    
-    tool.Activated:Connect(onActivated)
-    return tool
-end
-
--- Tabs container
-local tabs = {}
-
--- Function to clear content frame children (except layout/corners)
-local function clearContent()
-    for _, child in pairs(contentFrame:GetChildren()) do
-        if not (child:IsA("UIListLayout") or child:IsA("UICorner")) then
-            child:Destroy()
-        end
-    end
-end
-
--- Switch tab function
-local currentTab = nil
-local function switchTab(name)
-    if currentTab == name then return end
-    if not tabs[name] then return end
-    clearContent()
-    tabs[name].setup(contentFrame)
-    currentTab = name
-end
-
--- Create tab buttons with auto-resize
-local function createTabBtn(name)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 100, 1, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(50, 30, 110)
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 18
-    btn.Text = name
-    btn.AutoButtonColor = true
-    btn.Parent = tabButtonsFrame
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = btn
-
-    -- Auto-resize tab button
-    autoResizeTextElement(btn, 100, 150)
-
-    btn.MouseButton1Click:Connect(function()
-        switchTab(name)
-    end)
-    return btn
-end
-
--- PART 1 - TAB IMPLEMENTATIONS WITH ENHANCED FEATURES AND MAIN MENU SETUP
-
--- Main Menu Button Implementations
-createMainMenuButton("Load GUI", function()
-    mainMenuFrame.Visible = false
-    mainFrame.Visible = true
-    switchTab("Leaderboard") -- Start with leaderboard tab
-end)
-
-createMainMenuButton("Settings", function()
-    mainMenuFrame.Visible = false
-    settingsFrame.Visible = true
-    
-    -- Clear and populate settings content
-    for _, child in pairs(settingsContent:GetChildren()) do
-        if not child:IsA("UIListLayout") then
-            child:Destroy()
-        end
-    end
-    
-    -- Settings content setup
-    createRainbowHeader("GUI Settings", settingsContent)
-
-    -- Transparency textbox
-    createTextLabel("GUI Transparency: 0", settingsContent)
-    local transBox = createTextBox("Enter transparency (0-1)", settingsContent)
-
-    createButton("Apply Transparency", settingsContent, function()
-        local transparency = tonumber(transBox.Text)
-        if transparency and transparency >= 0 and transparency <= 1 then
-            mainFrame.BackgroundTransparency = transparency
-            topBar.BackgroundTransparency = transparency
-            tabButtonsFrame.BackgroundTransparency = transparency
-            contentFrame.BackgroundTransparency = transparency
-            showNotification("Transparency applied", false, false)
-        else
-            showNotification("Invalid transparency (must be 0-1)", true, false)
-        end
-    end)
-
-    -- Color Picker - basic RGB input for background color (with enhanced textbox)
-    local colorInput = createTextBox("Background Color RGB (e.g. 25,25,50)", settingsContent, nil, true)
-
-    createButton("Apply Background Color", settingsContent, function()
-        local text = colorInput.Text
-        local r, g, b = text:match("(%d+),%s*(%d+),%s*(%d+)")
-        if r and g and b then
-            r, g, b = tonumber(r), tonumber(g), tonumber(b)
-            if r and g and b and r <= 255 and g <= 255 and b <= 255 then
-                mainFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
-                topBar.BackgroundColor3 = Color3.fromRGB(r, g, b)
-                tabButtonsFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
-                contentFrame.BackgroundColor3 = Color3.fromRGB(r, g, b)
-                showNotification("Background color applied", false, false)
-            else
-                showNotification("Invalid RGB values (must be 0-255)", true, false)
-            end
-        else
-            showNotification("Invalid RGB format (use: R,G,B)", true, false)
-        end
-    end)
-end)
-
-createMainMenuButton("Credits", function()
-    mainMenuFrame.Visible = false
-    creditsFrame.Visible = true
-end)
-
--- Variables for minimize functionality
-local isMinimized = false
-local originalSize = mainFrame.Size
-local minimizedSize = UDim2.new(0, 1000, 0, 40)
-
--- Minimize button functionality
-minimizeBtn.MouseButton1Click:Connect(function()
-    if not isMinimized then
-        -- Minimize: hide tabs and content, keep only top bar
-        tabButtonsFrame.Visible = false
-        contentFrame.Visible = false
-        mainFrame.Size = minimizedSize
-        minimizeBtn.Text = "+"
-        isMinimized = true
-        showNotification("GUI minimized", false, false)
-    else
-        -- Restore: show tabs and content
-        tabButtonsFrame.Visible = true
-        contentFrame.Visible = true
-        mainFrame.Size = originalSize
-        minimizeBtn.Text = "-"
-        isMinimized = false
-        showNotification("GUI restored", false, false)
-    end
-end)
-
--- Close button functionality
-closeBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = false
-    mainMenuFrame.Visible = true
-end)
--- PART 2 - ALL TAB IMPLEMENTATIONS WITH NEW ENHANCED FEATURES
-
--- Leaderboard Tab
-tabs["Leaderboard"] = {
-    setup = function(frame)
-        createRainbowHeader("Leaderboard Management", frame)
-        
-        -- Check for leaderstats button
-        local checkLeaderstatsBtn = createButton("Check for Leaderstats", frame, function()
-            if checkForLeaderstats() then
-                showNotification("Leaderstats found running leaderboard tab", false, true)
-                -- Remove the check button and show the real leaderboard controls
-                checkLeaderstatsBtn:Destroy()
-                
-                -- Create leaderboard controls
-                createRainbowHeader("Leaderboard Controls", frame)
-                
-                -- Stat amount textbox
-                createTextLabel("Stat Amount", frame)
-                local statAmountBox = createTextBox("Enter stat amount", frame)
-                
-                -- User to change stats textbox
-                createTextLabel("User to Change Stats Of", frame)
-                local userToChangeBox = createTextBox("Enter username", frame)
-                
-                -- Stat All button
-                createButton("Stat All", frame, function()
-                    local statAmount = tonumber(statAmountBox.Text)
-                    if not statAmount then
-                        showNotification("Please enter a valid stat amount", true, false)
-                        return
-                    end
-                    
-                    local statCount = 0
-                    for _, player in pairs(Players:GetPlayers()) do
-                        if player:FindFirstChild("leaderstats") then
-                            for _, stat in pairs(player.leaderstats:GetChildren()) do
-                                if stat:IsA("IntValue") or stat:IsA("NumberValue") then
-                                    stat.Value = statAmount
-                                    statCount = statCount + 1
-                                end
-                            end
-                        end
-                    end
-                    showNotification("Set stats to " .. statAmount .. " for all players", false, false)
-                end)
-                
-                -- Stat User button
-                createButton("Stat User", frame, function()
-                    local statAmount = tonumber(statAmountBox.Text)
-                    local username = userToChangeBox.Text
-                    
-                    if not statAmount then
-                        showNotification("Please enter a valid stat amount", true, false)
-                        return
-                    end
-                    
-                    if username == "" then
-                        showNotification("Please enter a username", true, false)
-                        return
-                    end
-                    
-                    local targetPlayer = findPlayerByName(username)
-                    if not targetPlayer then
-                        showNotification("Player not found: " .. username, true, false)
-                        return
-                    end
-                    
-                    if targetPlayer:FindFirstChild("leaderstats") then
-                        for _, stat in pairs(targetPlayer.leaderstats:GetChildren()) do
-                            if stat:IsA("IntValue") or stat:IsA("NumberValue") then
-                                stat.Value = statAmount
-                            end
-                        end
-                        showNotification("Set " .. targetPlayer.Name .. "'s stats to " .. statAmount, false, false)
-                    else
-                        showNotification(targetPlayer.Name .. " has no leaderstats", true, false)
-                    end
-                end)
-            else
-                showNotification("No leaderstats found tab will stay hidden", true, false)
-            end
-        end)
-        
-        -- Position the check button in the top middle
-        checkLeaderstatsBtn.Position = UDim2.new(0.5, -80, 0, 50)
-        checkLeaderstatsBtn.AnchorPoint = Vector2.new(0.5, 0)
-    end
-}
-
--- Players Tab (Enhanced with Limb Coloring)
-tabs["Players"] = {
-    setup = function(frame)
-        -- Speed header
-        createRainbowHeader("Speed", frame)
-        
-        -- Speed Amount textbox
-        createTextLabel("Speed Amount", frame)
-        local speedAmountBox = createTextBox("Enter speed amount", frame)
-        
-        -- Speed All button
-        createButton("Speed All", frame, function()
-            local speedAmount = tonumber(speedAmountBox.Text)
-            if not speedAmount then
-                showNotification("Please enter a valid speed amount", true, false)
-                return
-            end
-            
-            local speedCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr.Character and plr.Character:FindFirstChild("Humanoid") then
-                    plr.Character.Humanoid.WalkSpeed = speedAmount
-                    speedCount = speedCount + 1
-                end
-            end
-            showNotification("Set speed to " .. speedAmount .. " for " .. speedCount .. " players", false, false)
-        end)
-
-        -- Individual speed controls
-        createTextLabel("Speed Username", frame)
-        local speedUserBox = createTextBox("Enter username", frame)
-        createButton("Speed User", frame, function()
-            local speedAmount = tonumber(speedAmountBox.Text)
-            if not speedAmount then
-                showNotification("Please enter a valid speed amount", true, false)
-                return
-            end
-            
-            local targetPlayer = findPlayerByName(speedUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. speedUserBox.Text, true, false)
-                return
-            end
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
-                targetPlayer.Character.Humanoid.WalkSpeed = speedAmount
-                showNotification("Set " .. targetPlayer.Name .. "'s speed to " .. speedAmount, false, false)
-            end
-        end)
-
-        -- Camera Mode header
-        createRainbowHeader("Camera Mode", frame)
-        createButton("First Person Others", frame, function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer then
-                    plr.CameraMode = Enum.CameraMode.LockFirstPerson
-                end
-            end
-            showNotification("Locked others to first person", false, false)
-        end)
-        createButton("Normal Camera Others", frame, function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer then
-                    plr.CameraMode = Enum.CameraMode.Classic
-                end
-            end
-            showNotification("Reset camera for others", false, false)
-        end)
-
-        -- Individual camera controls
-        createTextLabel("Camera Username", frame)
-        local cameraUserBox = createTextBox("Enter username", frame)
-        createButton("First Person User", frame, function()
-            local targetPlayer = findPlayerByName(cameraUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. cameraUserBox.Text, true, false)
-                return
-            end
-            targetPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
-            showNotification("Set " .. targetPlayer.Name .. " to first person", false, false)
-        end)
-        createButton("Normal Camera User", frame, function()
-            local targetPlayer = findPlayerByName(cameraUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. cameraUserBox.Text, true, false)
-                return
-            end
-            targetPlayer.CameraMode = Enum.CameraMode.Classic
-            showNotification("Reset " .. targetPlayer.Name .. " camera", false, false)
-        end)
-
-        -- Blinding header
-        createRainbowHeader("Blinding", frame)
-        createButton("Blind Others", frame, function()
-            local blindedCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr:FindFirstChild("PlayerGui") then
-                    pcall(function()
-                        -- Create persistent blinding GUI for each player
-                        local blindGui = Instance.new("ScreenGui")
-                        blindGui.Name = "BlindingScreen"
-                        blindGui.Parent = plr.PlayerGui
-                        blindGui.ResetOnSpawn = false
-                        blindGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-                        local blindFrame = Instance.new("Frame")
-                        blindFrame.Size = UDim2.new(1, 0, 1, 0)
-                        blindFrame.Position = UDim2.new(0, 0, 0, 0)
-                        blindFrame.BackgroundColor3 = Color3.new(0, 0, 0)
-                        blindFrame.BorderSizePixel = 0
-                        blindFrame.Parent = blindGui
-                        blindFrame.ZIndex = 10000
-
-                        blindedCount = blindedCount + 1
-                    end)
-                end
-            end
-            showNotification("Blinded " .. blindedCount .. " players", false, false)
-        end)
-
-        createButton("Unblind Others", frame, function()
-            local unblinedCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr:FindFirstChild("PlayerGui") then
-                    local blindGui = plr.PlayerGui:FindFirstChild("BlindingScreen")
-                    if blindGui then
-                        blindGui:Destroy()
-                        unblinedCount = unblinedCount + 1
-                    end
-                end
-            end
-            showNotification("Unblinded " .. unblinedCount .. " players", false, false)
-        end)
-
-        -- Individual blind controls
-        createTextLabel("Blind Username", frame)
-        local blindUserBox = createTextBox("Enter username", frame)
-        createButton("Blind User", frame, function()
-            local targetPlayer = findPlayerByName(blindUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. blindUserBox.Text, true, false)
-                return
-            end
-            if targetPlayer:FindFirstChild("PlayerGui") then
-                pcall(function()
-                    local blindGui = Instance.new("ScreenGui")
-                    blindGui.Name = "BlindingScreen"
-                    blindGui.Parent = targetPlayer.PlayerGui
-                    blindGui.ResetOnSpawn = false
-                    blindGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-                    local blindFrame = Instance.new("Frame")
-                    blindFrame.Size = UDim2.new(1, 0, 1, 0)
-                    blindFrame.Position = UDim2.new(0, 0, 0, 0)
-                    blindFrame.BackgroundColor3 = Color3.new(0, 0, 0)
-                    blindFrame.BorderSizePixel = 0
-                    blindFrame.Parent = blindGui
-                    blindFrame.ZIndex = 10000
-
-                    showNotification("Blinded " .. targetPlayer.Name, false, false)
-                end)
-            end
-        end)
-        createButton("Unblind User", frame, function()
-            local targetPlayer = findPlayerByName(blindUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. blindUserBox.Text, true, false)
-                return
-            end
-            if targetPlayer:FindFirstChild("PlayerGui") then
-                local blindGui = targetPlayer.PlayerGui:FindFirstChild("BlindingScreen")
-                if blindGui then
-                    blindGui:Destroy()
-                    showNotification("Unblinded " .. targetPlayer.Name, false, false)
-                end
-            end
-        end)
-
-        -- Invis Stuff header
-        createRainbowHeader("Invis Stuff", frame)
-        createButton("Invis Others", frame, function()
-            local invisCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character then
-                    for _, part in pairs(plr.Character:GetChildren()) do
-                        if part:IsA("BasePart") then
-                            part.Transparency = 1
-                            invisCount = invisCount + 1
-                        end
-                    end
-                    -- Also make accessories invisible
-                    for _, accessory in pairs(plr.Character:GetChildren()) do
-                        if accessory:IsA("Accessory") and accessory:FindFirstChild("Handle") then
-                            accessory.Handle.Transparency = 1
-                        end
-                    end
-                end
-            end
-            showNotification("Made others invisible", false, false)
-        end)
-        
-        createButton("Uninvis Others", frame, function()
-            local unInvisCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character then
-                    for _, part in pairs(plr.Character:GetChildren()) do
-                        if part:IsA("BasePart") then
-                            if part.Name == "Head" then
-                                part.Transparency = 0
-                            elseif part.Name ~= "HumanoidRootPart" then
-                                part.Transparency = 0
-                            end
-                            unInvisCount = unInvisCount + 1
-                        end
-                    end
-                    -- Also make accessories visible
-                    for _, accessory in pairs(plr.Character:GetChildren()) do
-                        if accessory:IsA("Accessory") and accessory:FindFirstChild("Handle") then
-                            accessory.Handle.Transparency = 0
-                        end
-                    end
-                end
-            end
-            showNotification("Made others visible", false, false)
-        end)
-
-        -- Individual invis controls
-        createTextLabel("Invis Username", frame)
-        local invisUserBox = createTextBox("Enter username", frame)
-        createButton("Invis User", frame, function()
-            local targetPlayer = findPlayerByName(invisUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. invisUserBox.Text, true, false)
-                return
-            end
-            if targetPlayer.Character then
-                for _, part in pairs(targetPlayer.Character:GetChildren()) do
-                    if part:IsA("BasePart") then
-                        part.Transparency = 1
-                    end
-                end
-                for _, accessory in pairs(targetPlayer.Character:GetChildren()) do
-                    if accessory:IsA("Accessory") and accessory:FindFirstChild("Handle") then
-                        accessory.Handle.Transparency = 1
-                    end
-                end
-                showNotification("Made " .. targetPlayer.Name .. " invisible", false, false)
-            end
-        end)
-        
-        -- NEW LIMB COLORING SECTION
-        createRainbowHeader("Limb Coloring", frame)
-        
-        -- RGB code textbox
-        createTextLabel("RGB Code for Limbs", frame)
-        local limbColorBox = createTextBox("RGB code for limbs (e.g. 255,0,0)", frame, nil, true)
-        
-        -- User to color textbox  
-        createTextLabel("User to Color", frame)
-        local userToColorBox = createTextBox("Enter username", frame)
-        
-        -- Color limbs others button
-        createButton("Color Limbs Others", frame, function()
-            local rgbText = limbColorBox.Text
-            local r, g, b = rgbText:match("(%d+),%s*(%d+),%s*(%d+)")
-            
-            if not (r and g and b) then
-                showNotification("Invalid RGB format (use: R,G,B)", true, false)
-                return
-            end
-            
-            r, g, b = tonumber(r), tonumber(g), tonumber(b)
-            if not (r and g and b and r <= 255 and g <= 255 and b <= 255) then
-                showNotification("Invalid RGB values (must be 0-255)", true, false)
-                return
-            end
-            
-            local rgbColor = Color3.fromRGB(r, g, b)
-            local coloredCount = 0
-            
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer then
-                    if setLimbColor(plr, rgbColor) then
-                        coloredCount = coloredCount + 1
-                    end
-                end
-            end
-            
-            showNotification("Colored " .. coloredCount .. " players' limbs", false, false)
-        end)
-        
-        -- Limb color user button
-        createButton("Limb Color User", frame, function()
-            local rgbText = limbColorBox.Text
-            local username = userToColorBox.Text
-            
-            if username == "" then
-                showNotification("Please enter a username", true, false)
-                return
-            end
-            
-            local r, g, b = rgbText:match("(%d+),%s*(%d+),%s*(%d+)")
-            if not (r and g and b) then
-                showNotification("Invalid RGB format (use: R,G,B)", true, false)
-                return
-            end
-            
-            r, g, b = tonumber(r), tonumber(g), tonumber(b)
-            if not (r and g and b and r <= 255 and g <= 255 and b <= 255) then
-                showNotification("Invalid RGB values (must be 0-255)", true, false)
-                return
-            end
-            
-            local targetPlayer = findPlayerByName(username)
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            local rgbColor = Color3.fromRGB(r, g, b)
-            if setLimbColor(targetPlayer, rgbColor) then
-                showNotification("Colored " .. targetPlayer.Name .. "'s limbs", false, false)
-            else
-                showNotification("Failed to color " .. targetPlayer.Name .. "'s limbs", true, false)
-            end
-        end)
-    end
-}
-
--- Chat Tab (Enhanced with Server Message)
-tabs["Chat"] = {
-    setup = function(frame)
-        createRainbowHeader("Chat Effects", frame)
-
-        local bgColorBox = createTextBox("RGB code for chat background", frame, nil, true)
-        local textColorBox = createTextBox("RGB code for text color", frame, nil, true)
-
-        local startRainbowBtn = createButton("Start Rainbow Chat", frame, function()
-            -- Stop any existing rainbow chat effect
-            if rainbowChatConnection then
-                rainbowChatConnection:Disconnect()
-            end
-            
-            local step = 0
-            rainbowChatConnection = RunService.RenderStepped:Connect(function()
-                step = step + 0.02
-                local r = math.floor(math.sin(step) * 127 + 128)
-                local g = math.floor(math.sin(step + 2) * 127 + 128)
-                local b = math.floor(math.sin(step + 4) * 127 + 128)
-                local chatConfig = TextChatService.ChatWindowConfiguration
-                chatConfig.BackgroundColor3 = Color3.fromRGB(r, g, b)
-                chatConfig.TextColor3 = Color3.fromRGB(r, g, b)
-                chatConfig.BackgroundTransparency = 0
-            end)
-            showNotification("Rainbow chat enabled", false, false)
-        end)
-
-        local normalChatBtn = createButton("Normal Chat", frame, function()
-            -- Stop rainbow chat effect
-            if rainbowChatConnection then
-                rainbowChatConnection:Disconnect()
-                rainbowChatConnection = nil
-            end
-            
-            local chatConfig = TextChatService.ChatWindowConfiguration
-            chatConfig.BackgroundColor3 = Color3.fromRGB(25, 27, 29)
-            chatConfig.TextColor3 = Color3.fromRGB(255, 255, 255)
-            chatConfig.BackgroundTransparency = 0.3
-            showNotification("Chat reset to normal", false, false)
-        end)
-
-        local setColorsBtn = createButton("Set Colors", frame, function()
-            local bgColorText = bgColorBox.Text
-            local textColorText = textColorBox.Text
-            local bgR, bgG, bgB = bgColorText:match("(%d+),%s*(%d+),%s*(%d+)")
-            local textR, textG, textB = textColorText:match("(%d+),%s*(%d+),%s*(%d+)")
-            if bgR and bgG and bgB and textR and textG and textB then
-                bgR, bgG, bgB, textR, textG, textB = tonumber(bgR), tonumber(bgG), tonumber(bgB), tonumber(textR), tonumber(textG), tonumber(textB)
-                if bgR and bgG and bgB and textR and textG and textB and bgR <= 255 and bgG <= 255 and bgB <= 255 and textR <= 255 and textG <= 255 and textB <= 255 then
-                    local chatConfig = TextChatService.ChatWindowConfiguration
-                    chatConfig.BackgroundColor3 = Color3.fromRGB(bgR, bgG, bgB)
-                    chatConfig.TextColor3 = Color3.fromRGB(textR, textG, textB)
-                    chatConfig.BackgroundTransparency = 0
-                    showNotification("Chat colors applied", false, false)
-                else
-                    showNotification("Invalid RGB values (must be 0-255)", true, false)
-                end
-            else
-                showNotification("Invalid RGB format (use: R,G,B)", true, false)
-            end
-        end)
-
-        -- Force Chat Messages section
-        createRainbowHeader("Force Chat Messages", frame)
-        
-        createTextLabel("Message", frame)
-        local messageBox = createTextBox("Enter message to send", frame)
-        
-        createTextLabel("User to Have Message", frame)
-        local userToMessageBox = createTextBox("Enter username", frame)
-        
-        createButton("Make All Message", frame, function()
-            local message = messageBox.Text
-            if message == "" then
-                showNotification("Please enter a message", true, false)
-                return
-            end
-            
-            local messageCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if forceChatMessage(plr, message) then
-                    messageCount = messageCount + 1
-                end
-            end
-            showNotification("Made " .. messageCount .. " players say: \"" .. message .. "\"", false, false)
-        end)
-        
-        createButton("User to Message", frame, function()
-            local message = messageBox.Text
-            local username = userToMessageBox.Text
-            
-            if message == "" then
-                showNotification("Please enter a message", true, false)
-                return
-            end
-            
-            if username == "" then
-                showNotification("Please enter a username", true, false)
-                return
-            end
-            
-            local targetPlayer = findPlayerByName(username)
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            if forceChatMessage(targetPlayer, message) then
-                showNotification("Made " .. targetPlayer.Name .. " say: \"" .. message .. "\"", false, false)
-            else
-                showNotification("Failed to make " .. targetPlayer.Name .. " chat", true, false)
-            end
-        end)
-        
-        -- NEW SERVER MESSAGE SECTION
-        createRainbowHeader("Server Message", frame)
-        
-        -- Input server message textbox
-        createTextLabel("Input Server Message", frame)
-        local serverMessageBox = createTextBox("Enter anything (symbols, numbers, letters, words, phrases)", frame)
-        
-        -- Sender of message textbox
-        createTextLabel("Sender of Message", frame)
-        local senderBox = createTextBox("Enter sender name", frame)
-        
-        -- Server message button
-        createButton("Server Message", frame, function()
-            local messageText = serverMessageBox.Text
-            local senderName = senderBox.Text
-            
-            if messageText == "" then
-                showNotification("Please enter a server message", true, false)
-                return
-            end
-            
-            if senderName == "" then
-                showNotification("Please enter a sender name", true, false)
-                return
-            end
-            
-            createServerMessage(messageText, senderName)
-            showNotification("Server message sent to all players", false, false)
-        end)
-    end
-}
-
--- Ban Stuff Tab (Enhanced show bans feature)
-tabs["Ban Stuff"] = {
-    setup = function(frame)
-        createRainbowHeader("Ban Controls", frame)
-        
-        -- Time input textboxes
-        createTextLabel("Ban Time Minutes", frame)
-        local banMinutesBox = createTextBox("Enter minutes", frame)
-        
-        createTextLabel("Ban Time Hours", frame)
-        local banHoursBox = createTextBox("Enter hours", frame)
-        
-        createTextLabel("Ban Time Days", frame)
-        local banDaysBox = createTextBox("Enter days", frame)
-        
-        createTextLabel("User to Ban", frame)
-        local userToBanBox = createTextBox("Enter username to ban", frame)
-        
-        createButton("Ban User", frame, function()
-            local username = userToBanBox.Text
-            local minutes = tonumber(banMinutesBox.Text) or 0
-            local hours = tonumber(banHoursBox.Text) or 0
-            local days = tonumber(banDaysBox.Text) or 0
-            
-            if username == "" then
-                showNotification("Please enter a username to ban", true, false)
-                return
-            end
-            
-            if minutes == 0 and hours == 0 and days == 0 then
-                showNotification("Please enter a ban duration", true, false)
-                return
-            end
-            
-            local targetPlayer = findPlayerByName(username)
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            local totalMinutes = banPlayer(targetPlayer, minutes, hours, days)
-            showNotification("Banned " .. targetPlayer.Name .. " for " .. totalMinutes .. " minutes", false, false)
-        end)
-        
-        createButton("Ban Others", frame, function()
-            local minutes = tonumber(banMinutesBox.Text) or 0
-            local hours = tonumber(banHoursBox.Text) or 0
-            local days = tonumber(banDaysBox.Text) or 0
-            
-            if minutes == 0 and hours == 0 and days == 0 then
-                showNotification("Please enter a ban duration", true, false)
-                return
-            end
-            
-            local bannedCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer then
-                    banPlayer(plr, minutes, hours, days)
-                    bannedCount = bannedCount + 1
-                end
-            end
-            
-            local totalMinutes = minutes + (hours * 60) + (days * 1440)
-            showNotification("Banned " .. bannedCount .. " players for " .. totalMinutes .. " minutes", false, false)
-        end)
-        
-        -- Show current bans
-        createRainbowHeader("Current Bans", frame)
-        
-        createButton("Show Banned Players", frame, function()
-            local activeBans = {}
-            for userId, banData in pairs(bannedPlayers) do
-                if tick() < banData.banEndTime then
-                    local timeLeft = math.ceil((banData.banEndTime - tick()) / 60)
-                    table.insert(activeBans, banData.name .. " (" .. timeLeft .. " min left)")
-                end
-            end
-            
-            if #activeBans > 0 then
-                -- Show each banned player as separate green notification
-                for _, banInfo in ipairs(activeBans) do
-                    showNotification("Banned: " .. banInfo, false, true)
-                end
-            else
-                showNotification("No players are currently banned", false, true)
-            end
-        end)
-        
-        createButton("Clear All Bans", frame, function()
-            local clearedCount = 0
-            for userId, _ in pairs(bannedPlayers) do
-                clearedCount = clearedCount + 1
-            end
-            bannedPlayers = {}
-            showNotification("Cleared " .. clearedCount .. " bans", false, false)
-        end)
-    end
-}
-
--- Skybox Tab (Enhanced RGB textbox)
-tabs["Skybox"] = {
-    setup = function(frame)
-        createRainbowHeader("Skybox Controls", frame)
-
-        local colorBox = createTextBox("RGB code (e.g. 255,255,255)", frame, nil, true)
-
-        local applyColorBtn = createButton("Apply Color", frame, function()
-            local text = colorBox.Text
-            local r, g, b = text:match("(%d+),%s*(%d+),%s*(%d+)")
-            if r and g and b then
-                r, g, b = tonumber(r), tonumber(g), tonumber(b)
-                if r and g and b and r <= 255 and g <= 255 and b <= 255 then
-                    Lighting:SetMinutesAfterMidnight(720)
-                    local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky", Lighting)
-                    sky.SkyboxBk = ""
-                    sky.SkyboxDn = ""
-                    sky.SkyboxFt = ""
-                    sky.SkyboxLf = ""
-                    sky.SkyboxRt = ""
-                    sky.SkyboxUp = ""
-                    local cc = Lighting:FindFirstChild("ColorCorrection") or Instance.new("ColorCorrectionEffect", Lighting)
-                    cc.TintColor = Color3.fromRGB(r, g, b)
-                    showNotification("Skybox color applied", false, false)
-                else
-                    showNotification("Invalid RGB values (must be 0-255)", true, false)
-                end
-            else
-                showNotification("Invalid RGB format (use: R,G,B)", true, false)
-            end
-        end)
-
-        local revertBtn = createButton("Revert Sky", frame, function()
-            -- Stop disco sky effect
-            if discoSkyConnection then
-                discoSkyConnection:Disconnect()
-                discoSkyConnection = nil
-            end
-            
-            local cc = Lighting:FindFirstChild("ColorCorrection")
-            if cc then cc:Destroy() end
-            local sky = Lighting:FindFirstChildOfClass("Sky")
-            if sky then sky:Destroy() end
-            Lighting:SetMinutesAfterMidnight(720)
-            showNotification("Sky reverted to default", false, false)
-        end)
-
-        local discoBtn = createButton("Disco Sky", frame, function()
-            -- Stop any existing disco sky effect
-            if discoSkyConnection then
-                discoSkyConnection:Disconnect()
-            end
-            
-            -- Create or get ColorCorrection effect
-            local cc = Lighting:FindFirstChild("ColorCorrection") or Instance.new("ColorCorrectionEffect", Lighting)
-            cc.Name = "ColorCorrection"
-            
-            -- Clear skybox textures
-            local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky", Lighting)
-            sky.SkyboxBk = ""
-            sky.SkyboxDn = ""
-            sky.SkyboxFt = ""
-            sky.SkyboxLf = ""
-            sky.SkyboxRt = ""
-            sky.SkyboxUp = ""
-            
-            local step = 0
-            discoSkyConnection = RunService.RenderStepped:Connect(function()
-                step = step + 0.02
-                local r = math.floor(math.sin(step) * 127 + 128)
-                local g = math.floor(math.sin(step + 2) * 127 + 128)
-                local b = math.floor(math.sin(step + 4) * 127 + 128)
-                cc.TintColor = Color3.fromRGB(r, g, b)
-            end)
-            showNotification("Disco sky activated", false, false)
-        end)
-    end
-}
-
--- Enhanced Trolling Tab (New buttons added)
-tabs["Trolling"] = {
-    setup = function(frame)
-        createRainbowHeader("Trolling", frame)
-
-        -- FIXED FLING SECTION
-        createRainbowHeader("Fling Controls", frame)
-        
-        -- Fling Power Textbox
-        createTextLabel("Fling Power 1-100", frame)
-        local flingPowerBox = createTextBox("Enter fling power (1-100)", frame)
-        
-        createTextLabel("Fling User", frame)
-        local flingUserBox = createTextBox("Enter username to fling", frame)
-        
-        createButton("Fling User", frame, function()
-            local username = flingUserBox.Text
-            local powerText = flingPowerBox.Text
-            
-            if username == "" then
-                showNotification("Please enter a username to fling", true, false)
-                return
-            end
-            
-            if powerText == "" then
-                showNotification("Please enter fling power (1-100)", true, false)
-                return
-            end
-            
-            local power = tonumber(powerText)
-            if not power or power < 1 or power > 100 then
-                showNotification("Fling power must be between 1-100", true, false)
-                return
-            end
-            
-            local targetPlayer = findPlayerByName(username)
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            if flingPlayer(targetPlayer, power) then
-                showNotification("Flung " .. targetPlayer.Name .. " with power " .. power, false, false)
-            else
-                showNotification("Failed to fling " .. targetPlayer.Name, true, false)
-            end
-        end)
-        
-        createButton("Fling Others", frame, function()
-            local powerText = flingPowerBox.Text
-            
-            if powerText == "" then
-                showNotification("Please enter fling power (1-100)", true, false)
-                return
-            end
-            
-            local power = tonumber(powerText)
-            if not power or power < 1 or power > 100 then
-                showNotification("Fling power must be between 1-100", true, false)
-                return
-            end
-            
-            local flingCount = 0
-            
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer then
-                    if flingPlayer(plr, power) then
-                        flingCount = flingCount + 1
-                    end
-                end
-            end
-            
-            showNotification("Flung " .. flingCount .. " players with power " .. power, false, false)
-        end)
-
-        -- General Trolling
-        createRainbowHeader("General Trolling", frame)
-
-        createButton("Freeze Others", frame, function()
-            local frozenCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                    plr.Character.HumanoidRootPart.Anchored = true
-                    frozenCount = frozenCount + 1
-                end
-            end
-            showNotification("Froze " .. frozenCount .. " players", false, false)
-        end)
-
-        -- NEW UNFREEZE OTHERS BUTTON
-        createButton("Unfreeze Others", frame, function()
-            local unfrozenCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                    plr.Character.HumanoidRootPart.Anchored = false
-                    unfrozenCount = unfrozenCount + 1
-                end
-            end
-            showNotification("Unfroze " .. unfrozenCount .. " players", false, false)
-        end)
-
-        -- NEW EXPLODE OTHERS BUTTON
-        createButton("Explode Others", frame, function()
-            local explodedCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                    local explosion = Instance.new("Explosion")
-                    explosion.Position = plr.Character.HumanoidRootPart.Position
-                    explosion.BlastRadius = 50
-                    explosion.BlastPressure = 500000
-                    explosion.Parent = workspace
-                    explodedCount = explodedCount + 1
-                end
-            end
-            showNotification("Exploded " .. explodedCount .. " players", false, false)
-        end)
-
-        -- NEW KILL OTHERS BUTTON
-        createButton("Kill Others", frame, function()
-            local killedCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") then
-                    plr.Character.Humanoid.Health = 0
-                    killedCount = killedCount + 1
-                end
-            end
-            showNotification("Killed " .. killedCount .. " players", false, false)
-        end)
-
-        createButton("Kick Others", frame, function()
-            local kickedCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer then
-                    plr:Kick("You have been kicked by an admin.")
-                    kickedCount = kickedCount + 1
-                end
-            end
-            showNotification("Kicked " .. kickedCount .. " players", false, false)
-        end)
-    end
-}
-
--- Enhanced Particles Tab (Fire, Sparkles, Smoke)
-tabs["Particles"] = {
-    setup = function(frame)
-        createRainbowHeader("Particle Effects", frame)
-
-        -- Fire section
-        createRainbowHeader("Fire", frame)
-        createButton("Fire Particle All", frame, function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr.Character and plr.Character:FindFirstChild("Torso") then
-                    local fire = Instance.new("Fire")
-                    fire.Name = "AdminFire"
-                    fire.Size = 5
-                    fire.Heat = 10
-                    fire.Parent = plr.Character.Torso
-                elseif plr.Character and plr.Character:FindFirstChild("UpperTorso") then
-                    local fire = Instance.new("Fire")
-                    fire.Name = "AdminFire"
-                    fire.Size = 5
-                    fire.Heat = 10
-                    fire.Parent = plr.Character.UpperTorso
-                end
-            end
-            showNotification("Fire particles applied to all players", false, false)
-        end)
-
-        createButton("Stop Fire Particle All", frame, function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr.Character then
-                    for _, part in pairs(plr.Character:GetChildren()) do
-                        if part:FindFirstChild("AdminFire") then
-                            part.AdminFire:Destroy()
-                        end
-                    end
-                end
-            end
-            showNotification("Fire particles removed from all players", false, false)
-        end)
-
-        -- Individual fire controls
-        createTextLabel("Fire Username", frame)
-        local fireUserBox = createTextBox("Enter username", frame)
-        createButton("Fire User", frame, function()
-            local targetPlayer = findPlayerByName(fireUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. fireUserBox.Text, true, false)
-                return
-            end
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Torso") then
-                local fire = Instance.new("Fire")
-                fire.Name = "AdminFire"
-                fire.Size = 5
-                fire.Heat = 10
-                fire.Parent = targetPlayer.Character.Torso
-                showNotification("Fire particles applied to " .. targetPlayer.Name, false, false)
-            elseif targetPlayer.Character and targetPlayer.Character:FindFirstChild("UpperTorso") then
-                local fire = Instance.new("Fire")
-                fire.Name = "AdminFire"
-                fire.Size = 5
-                fire.Heat = 10
-                fire.Parent = targetPlayer.Character.UpperTorso
-                showNotification("Fire particles applied to " .. targetPlayer.Name, false, false)
-            end
-        end)
-
-        -- NEW SPARKLES SECTION
-        createRainbowHeader("Sparkles", frame)
-        createButton("Sparkle Particle All", frame, function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr.Character and plr.Character:FindFirstChild("Torso") then
-                    local sparkles = Instance.new("Sparkles")
-                    sparkles.Name = "AdminSparkles"
-                    sparkles.SparkleColor = Color3.fromRGB(255, 255, 255)
-                    sparkles.Parent = plr.Character.Torso
-                elseif plr.Character and plr.Character:FindFirstChild("UpperTorso") then
-                    local sparkles = Instance.new("Sparkles")
-                    sparkles.Name = "AdminSparkles"
-                    sparkles.SparkleColor = Color3.fromRGB(255, 255, 255)
-                    sparkles.Parent = plr.Character.UpperTorso
-                end
-            end
-            showNotification("Sparkle particles applied to all players", false, false)
-        end)
-
-        createButton("Stop Sparkle Particle All", frame, function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr.Character then
-                    for _, part in pairs(plr.Character:GetChildren()) do
-                        if part:FindFirstChild("AdminSparkles") then
-                            part.AdminSparkles:Destroy()
-                        end
-                    end
-                end
-            end
-            showNotification("Sparkle particles removed from all players", false, false)
-        end)
-
-        -- Individual sparkles controls
-        createTextLabel("Sparkles Username", frame)
-        local sparklesUserBox = createTextBox("Enter username", frame)
-        createButton("Sparkles User", frame, function()
-            local targetPlayer = findPlayerByName(sparklesUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. sparklesUserBox.Text, true, false)
-                return
-            end
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Torso") then
-                local sparkles = Instance.new("Sparkles")
-                sparkles.Name = "AdminSparkles"
-                sparkles.SparkleColor = Color3.fromRGB(255, 255, 255)
-                sparkles.Parent = targetPlayer.Character.Torso
-                showNotification("Sparkle particles applied to " .. targetPlayer.Name, false, false)
-            elseif targetPlayer.Character and targetPlayer.Character:FindFirstChild("UpperTorso") then
-                local sparkles = Instance.new("Sparkles")
-                sparkles.Name = "AdminSparkles"
-                sparkles.SparkleColor = Color3.fromRGB(255, 255, 255)
-                sparkles.Parent = targetPlayer.Character.UpperTorso
-                showNotification("Sparkle particles applied to " .. targetPlayer.Name, false, false)
-            end
-        end)
-
-        -- NEW SMOKE SECTION
-        createRainbowHeader("Smoke", frame)
-        createButton("Smoke Particle All", frame, function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr.Character and plr.Character:FindFirstChild("Torso") then
-                    local smoke = Instance.new("Smoke")
-                    smoke.Name = "AdminSmoke"
-                    smoke.Size = 5
-                    smoke.Opacity = 0.5
-                    smoke.RiseVelocity = 25
-                    smoke.Parent = plr.Character.Torso
-                elseif plr.Character and plr.Character:FindFirstChild("UpperTorso") then
-                    local smoke = Instance.new("Smoke")
-                    smoke.Name = "AdminSmoke"
-                    smoke.Size = 5
-                    smoke.Opacity = 0.5
-                    smoke.RiseVelocity = 25
-                    smoke.Parent = plr.Character.UpperTorso
-                end
-            end
-            showNotification("Smoke particles applied to all players", false, false)
-        end)
-
-        createButton("Stop Smoke Particle All", frame, function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr.Character then
-                    for _, part in pairs(plr.Character:GetChildren()) do
-                        if part:FindFirstChild("AdminSmoke") then
-                            part.AdminSmoke:Destroy()
-                        end
-                    end
-                end
-            end
-            showNotification("Smoke particles removed from all players", false, false)
-        end)
-
-        -- Individual smoke controls
-        createTextLabel("Smoke Username", frame)
-        local smokeUserBox = createTextBox("Enter username", frame)
-        createButton("Smoke User", frame, function()
-            local targetPlayer = findPlayerByName(smokeUserBox.Text)
-            if not targetPlayer then
-                showNotification("Player not found: " .. smokeUserBox.Text, true, false)
-                return
-            end
-            if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Torso") then
-                local smoke = Instance.new("Smoke")
-                smoke.Name = "AdminSmoke"
-                smoke.Size = 5
-                smoke.Opacity = 0.5
-                smoke.RiseVelocity = 25
-                smoke.Parent = targetPlayer.Character.Torso
-                showNotification("Smoke particles applied to " .. targetPlayer.Name, false, false)
-            elseif targetPlayer.Character and targetPlayer.Character:FindFirstChild("UpperTorso") then
-                local smoke = Instance.new("Smoke")
-                smoke.Name = "AdminSmoke"
-                smoke.Size = 5
-                smoke.Opacity = 0.5
-                smoke.RiseVelocity = 25
-                smoke.Parent = targetPlayer.Character.UpperTorso
-                showNotification("Smoke particles applied to " .. targetPlayer.Name, false, false)
-            end
-        end)
-    end
-}
-
--- Music Tab
-tabs["Music"] = {
-    setup = function(frame)
-        createRainbowHeader("Music Controls", frame)
-
-        local musicIdBox = createTextBox("Enter Music ID", frame)
-        
-        -- Speed controls
-        createTextLabel("Playback Speed", frame)
-        local speedBox = createTextBox("Enter playback speed", frame)
-
-        local soundObject = workspace:FindFirstChild("MusicPlayer") or Instance.new("Sound", workspace)
-        soundObject.Name = "MusicPlayer"
-        soundObject.Volume = 0.5
-        soundObject.Looped = true
-
-        createButton("Start Music", frame, function()
-            local id = tonumber(musicIdBox.Text)
-            if id then
-                soundObject.SoundId = "rbxassetid://" .. id
-                soundObject:Play()
-                showNotification("Music started", false, false)
-            else
-                showNotification("Invalid Music ID", true, false)
-            end
-        end)
-
-        createButton("Stop Music", frame, function()
-            soundObject:Stop()
-            showNotification("Music stopped", false, false)
-        end)
-
-        createButton("Set Speed", frame, function()
-            local speed = tonumber(speedBox.Text)
-            if speed and speed > 0 then
-                soundObject.PlaybackSpeed = speed
-                showNotification("Playback speed set to " .. speed .. "x", false, false)
-            else
-                showNotification("Invalid speed (must be > 0)", true, false)
-            end
-        end)
-    end
-}
-
--- Spam Tab
-tabs["Spam"] = {
-    setup = function(frame)
-        createRainbowHeader("Spam Controls", frame)
-
-        local spamConnection = nil
-
-        local startSpamBtn = createButton("Start Part Spam", frame, function()
-            -- Stop any existing spam
-            if spamConnection then
-                spamConnection:Disconnect()
-            end
-            
-            spamConnection = RunService.Heartbeat:Connect(function()
-                -- Calculate average player position
-                local totalPosition = Vector3.new(0, 0, 0)
-                local playerCount = 0
-                
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                        totalPosition = totalPosition + player.Character.HumanoidRootPart.Position
-                        playerCount = playerCount + 1
-                    end
-                end
-                
-                local averagePosition = Vector3.new(0, 150, 0) -- Default if no players (150 studs up)
-                if playerCount > 0 then
-                    averagePosition = totalPosition / playerCount
-                    averagePosition = Vector3.new(averagePosition.X, averagePosition.Y + 100, averagePosition.Z) -- 100 studs above players
-                end
-                
-                -- Spawn 40 parts around average position
-                local newParts = {}
-                for i = 1, 40 do
-                    local part = Instance.new("Part")
-                    part.Name = "SpamPart"
-                    part.Size = Vector3.new(5, 5, 5) -- 5x5x5 stud cubes
-                    part.Material = Enum.Material.Neon
-                    part.Color = Color3.new(1, 1, 1) -- Bright white
-                    part.CanCollide = false -- Collide off
-                    part.Anchored = true
-                    
-                    -- Random position within 300 stud radius
-                    local angle = math.random() * math.pi * 2
-                    local distance = math.random(10, 300)
-                    local x = averagePosition.X + math.cos(angle) * distance
-                    local z = averagePosition.Z + math.sin(angle) * distance
-                    local y = averagePosition.Y + math.random(-20, 20) -- Small vertical variation from the 100 stud height
-                    
-                    part.Position = Vector3.new(x, y, z)
-                    part.Parent = Workspace
-                    table.insert(newParts, part)
-                end
-            end)
-            showNotification("Part spam started", false, false)
-        end)
-
-        local stopSpamBtn = createButton("End Part Spam", frame, function()
-            -- Stop spawning
-            if spamConnection then
-                spamConnection:Disconnect()
-                spamConnection = nil
-            end
-            
-            -- Clean up all spam parts
-            for _, child in pairs(Workspace:GetChildren()) do
-                if child:IsA("Part") and child.Name == "SpamPart" then
-                    child:Destroy()
-                end
-            end
-            showNotification("Part spam stopped", false, false)
-        end)
-    end
-}
-
--- Workspace Tab
-tabs["Workspace"] = {
-    setup = function(frame)
-        createRainbowHeader("Workspace Controls", frame)
-
-        createButton("Delete Terrain", frame, function()
-            local terrain = Workspace:FindFirstChild("Terrain")
-            if terrain then
-                terrain:ReadVoxels(Region3.new(Vector3.new(-2048, -2048, -2048), Vector3.new(2048, 2048, 2048)), 4)
-                terrain:FillRegion(Region3.new(Vector3.new(-2048, -2048, -2048), Vector3.new(2048, 2048, 2048)), 4, Enum.Material.Air)
-                showNotification("Terrain deleted", false, false)
-            end
-        end)
-
-        createButton("Delete Workspace", frame, function()
-            local deletedCount = 0
-            for _, child in pairs(Workspace:GetChildren()) do
-                if child ~= Workspace.Terrain and child ~= Workspace.Camera and not Players:GetPlayerFromCharacter(child) then
-                    if child:IsA("BasePart") or child:IsA("Model") or child:IsA("Part") or child:IsA("Folder") then
-                        child:Destroy()
-                        deletedCount = deletedCount + 1
-                    end
-                end
-            end
-            showNotification("Workspace cleaned (" .. deletedCount .. " objects)", false, false)
-        end)
-    end
-}
-
--- Enhanced Gears Tab (With Gear Spam and Sledge Hammer sections)
-tabs["Gears"] = {
-    setup = function(frame)
-        createRainbowHeader("Gear Controls", frame)
-
-        -- Gear ID input
-        createTextLabel("Input Gear ID", frame)
-        local gearIdBox = createTextBox("Enter gear ID", frame)
-
-        -- Give gear to all button
-        createButton("Gear All", frame, function()
-            local gearId = tonumber(gearIdBox.Text)
-            
-            if not gearId then
-                showNotification("Please enter a gear ID", true, false)
-                return
-            end
-            
-            local gearCount = 0
-            for _, player in pairs(Players:GetPlayers()) do
-                if player.Character and player:FindFirstChild("Backpack") then
-                    local success, errorMsg = pcall(function()
-                        local gear = InsertService:LoadAsset(gearId)
-                        if gear and gear:GetChildren()[1] then
-                            local tool = gear:GetChildren()[1]
-                            if tool:IsA("Tool") then
-                                tool.Parent = player.Backpack
-                                gearCount = gearCount + 1
-                            end
-                        end
-                    end)
-                end
-            end
-            showNotification("Gave gear to " .. gearCount .. " players", false, false)
-        end)
-
-        -- Username input
-        createTextLabel("Input Username", frame)
-        local usernameBox = createTextBox("Enter username", frame)
-
-        -- Give gear button
-        createButton("Give Gear", frame, function()
-            local username = usernameBox.Text
-            local gearId = tonumber(gearIdBox.Text)
-            
-            if username == "" or not gearId then
-                showNotification("Please enter both username and gear ID", true, false)
-                return
-            end
-            
-            -- Find player by username
-            local targetPlayer = findPlayerByName(username)
-            
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            if not targetPlayer.Character then
-                showNotification("Player has no character", true, false)
-                return
-            end
-            
-            -- Create gear and give to player
-            local success, errorMsg = pcall(function()
-                local gear = InsertService:LoadAsset(gearId)
-                if gear and gear:GetChildren()[1] then
-                    local tool = gear:GetChildren()[1]
-                    if tool:IsA("Tool") then
-                        tool.Parent = targetPlayer.Backpack
-                        showNotification("Gave gear to " .. targetPlayer.Name, false, false)
-                    else
-                        showNotification("Asset is not a tool/gear", true, false)
-                    end
-                else
-                    showNotification("Failed to load gear with ID: " .. gearId, true, false)
-                end
-            end)
-            
-            if not success then
-                showNotification("Error giving gear: " .. tostring(errorMsg), true, false)
-            end
-        end)
-
-        -- NEW GEAR SPAM SECTION
-        createRainbowHeader("Gear Spam", frame)
-        
-        -- User to gear spam textbox
-        createTextLabel("User to Gear Spam", frame)
-        local gearSpamUserBox = createTextBox("Enter username", frame)
-        
-        -- Gear spam others button
-        createButton("Gear Spam Others", frame, function()
-            local spammedCount = 0
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and player:FindFirstChild("Backpack") then
-                    for i = 1, 100 do
-                        local tool = Instance.new("Tool")
-                        tool.Name = "SpamTool" .. i
-                        tool.Parent = player.Backpack
-                    end
-                    spammedCount = spammedCount + 1
-                end
-            end
-            showNotification("Gear spammed " .. spammedCount .. " players with 100 tools each", false, false)
-        end)
-        
-        -- Gear spam user button
-        createButton("Gear Spam User", frame, function()
-            local username = gearSpamUserBox.Text
-            if username == "" then
-                showNotification("Please enter a username", true, false)
-                return
-            end
-            
-            local targetPlayer = findPlayerByName(username)
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            if targetPlayer:FindFirstChild("Backpack") then
-                for i = 1, 100 do
-                    local tool = Instance.new("Tool")
-                    tool.Name = "SpamTool" .. i
-                    tool.Parent = targetPlayer.Backpack
-                end
-                showNotification("Gear spammed " .. targetPlayer.Name .. " with 100 tools", false, false)
-            else
-                showNotification(targetPlayer.Name .. " has no backpack", true, false)
-            end
-        end)
-        
-        -- Gear clear others button
-        createButton("Gear Clear Others", frame, function()
-            local clearedCount = 0
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and player:FindFirstChild("Backpack") then
-                    player.Backpack:ClearAllChildren()
-                    clearedCount = clearedCount + 1
-                end
-            end
-            showNotification("Cleared gear from " .. clearedCount .. " players", false, false)
-        end)
-
-        -- NEW SLEDGE HAMMER SECTION
-        createRainbowHeader("Sledge Hammer (Unanchors)", frame)
-        
-        -- Sledge hammer user textbox
-        createTextLabel("Sledge Hammer User", frame)
-        local sledgeUserBox = createTextBox("Enter username", frame)
-        
-        -- Sledge hammer all button
-        createButton("Sledge Hammer All", frame, function()
-            local hammerCount = 0
-            for _, player in pairs(Players:GetPlayers()) do
-                if player:FindFirstChild("Backpack") then
-                    local sledgeHammer = createSledgeHammer()
-                    sledgeHammer.Parent = player.Backpack
-                    hammerCount = hammerCount + 1
-                end
-            end
-            showNotification("Gave sledge hammer to " .. hammerCount .. " players", false, false)
-        end)
-        
-        -- Sledge hammer user button
-        createButton("Sledge Hammer User", frame, function()
-            local username = sledgeUserBox.Text
-            if username == "" then
-                showNotification("Please enter a username", true, false)
-                return
-            end
-            
-            local targetPlayer = findPlayerByName(username)
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            if targetPlayer:FindFirstChild("Backpack") then
-                local sledgeHammer = createSledgeHammer()
-                sledgeHammer.Parent = targetPlayer.Backpack
-                showNotification("Gave sledge hammer to " .. targetPlayer.Name, false, false)
-            else
-                showNotification(targetPlayer.Name .. " has no backpack", true, false)
-            end
-        end)
-    end
-}
-
--- User Location Tab
-tabs["User Location"] = {
-    setup = function(frame)
-        createRainbowHeader("Teleport Controls", frame)
-
-        -- Bring All button
-        createButton("Bring All", frame, function()
-            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                showNotification("You need a character to bring others", true, false)
-                return
-            end
-            
-            local myPosition = LocalPlayer.Character.HumanoidRootPart.Position
-            local broughtCount = 0
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                    -- Teleport to slightly different positions to avoid overlapping
-                    local offset = Vector3.new(math.random(-10, 10), 0, math.random(-10, 10))
-                    plr.Character.HumanoidRootPart.CFrame = CFrame.new(myPosition + offset)
-                    broughtCount = broughtCount + 1
-                end
-            end
-            showNotification("Brought " .. broughtCount .. " players", false, false)
-        end)
-
-        -- Goto Username section
-        createTextLabel("Goto Username", frame)
-        local gotoBox = createTextBox("Enter username to go to", frame)
-
-        createButton("Go To Player", frame, function()
-            local username = gotoBox.Text
-            if username == "" then
-                showNotification("Please enter a username", true, false)
-                return
-            end
-            
-            -- Find target player
-            local targetPlayer = findPlayerByName(username)
-            
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                showNotification("Target player has no character", true, false)
-                return
-            end
-            
-            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                showNotification("You need a character to teleport", true, false)
-                return
-            end
-            
-            -- Teleport to target player
-            LocalPlayer.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(5, 0, 0)
-            showNotification("Teleported to " .. targetPlayer.Name, false, false)
-        end)
-
-        -- Bring Username section
-        createTextLabel("Bring Username", frame)
-        local bringBox = createTextBox("Enter username to bring", frame)
-
-        createButton("Bring Player", frame, function()
-            local username = bringBox.Text
-            if username == "" then
-                showNotification("Please enter a username", true, false)
-                return
-            end
-            
-            -- Find target player
-            local targetPlayer = findPlayerByName(username)
-            
-            if not targetPlayer then
-                showNotification("Player not found: " .. username, true, false)
-                return
-            end
-            
-            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                showNotification("Target player has no character", true, false)
-                return
-            end
-            
-            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                showNotification("You need a character to bring others", true, false)
-                return
-            end
-            
-            -- Bring target player to you
-            targetPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(5, 0, 0)
-            showNotification("Brought " .. targetPlayer.Name .. " to you", false, false)
-        end)
-    end
-}
-
--- Create all tab buttons
-createTabBtn("Leaderboard")
-createTabBtn("Players")
-createTabBtn("Chat")
-createTabBtn("Ban Stuff")
-createTabBtn("Skybox")
-createTabBtn("Trolling")
-createTabBtn("Particles")
-createTabBtn("Music")
-createTabBtn("Spam")
-createTabBtn("Workspace")
-createTabBtn("Gears")
-createTabBtn("User Location")
-
--- Start with main menu visible
-mainMenuFrame.Visible = true
-
-and as you can tell there are some bugs and a ton of stuff was randomly removed so
-
-can you re add the avatar related things those got removed also the leader board checking say its there but its not cause it checking for a leaderboard but it need to check workplace then every player for "LeaderStats" also the sledge hammer is not a literal hammer its a sledgehammer it also does not swing i should be able to swing it with a animation and when i swing it (left-click) it unachors whatever it touches and when someone gets exploded by the explode others troll it does not kill them it just removes any limbs it should full on explode them and they die also in messages like error messages confired working error messages or confirmation of leader stats message make the text background 90% transparent and the text 0% transparent so you can see the text
-change this stuff after i send the second script then send me the new script with the bugs fixed and stuff that got removed re added and send it in 2 parts the first part no and i mean NO lower than 1400 and no and i mean NO higher than 1600 lines and the second part will just be the rest
+as you might have noticed many features got removed so can you re do this with all features in there and sned it in 2 parts the first part no and i mean NO lower than 1200 lines and no and i mean NO higher than 1600 lines and the second part will just be the rest of it so please also only send part 2 if i say ready
+if i say continue just keep going on the current part only move to part 2 if i say ready now please send part 1
